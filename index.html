@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -23,6 +24,12 @@
   table{width:100%;border-collapse:collapse;}
   td,th{padding:8px;border-top:1px solid var(--border);text-align:left;font-size:14px;}
   .muted{color:var(--muted);font-size:13px;}
+  .tabs{display:flex;gap:2px;margin-bottom:16px;border-bottom:1px solid var(--border);}
+  .tab-btn{background:none;border:none;padding:9px 14px;font-size:14px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-family:inherit;}
+  .tab-btn.active{color:var(--ink);font-weight:600;border-bottom-color:var(--ink);}
+  .scroll{max-height:480px;overflow-y:auto;}
+  thead th{position:sticky;top:0;background:#fff;}
+  .cat-header{background:var(--surface);font-weight:600;font-size:12px;padding:6px 8px;}
 </style>
 </head>
 <body>
@@ -102,25 +109,46 @@ async function showDashboard(session){
 }
 
 async function showEntrenadorDashboard(userId){
-  const { data: clientes } = await sb.from('clientes').select('*').eq('entrenador_id', userId).order('nombre');
-  let rows = (clientes||[]).map(c=>`<tr><td>${c.nombre}</td><td>${c.email||'—'}</td><td>${c.objetivo||'—'}</td><td>${c.auth_user_id ? 'Sí' : 'No'}</td></tr>`).join('');
   app.innerHTML = `
     <div class="card wide">
       <div class="inline">
         <h1>Panel del entrenador</h1>
         <button class="secondary" onclick="logout()">Cerrar sesión</button>
       </div>
-      <h2>Tus asesorados</h2>
-      <table><thead><tr><th>Nombre</th><th>Correo</th><th>Objetivo</th><th>Ya entró</th></tr></thead>
-      <tbody>${rows || '<tr><td colspan="4" class="muted">Aún no tienes asesorados.</td></tr>'}</tbody></table>
-
-      <h2>Agregar asesorado</h2>
-      <div class="row">
-        <input type="text" id="newNombre" placeholder="Nombre">
-        <input type="email" id="newEmail" placeholder="Correo (con el que él/ella se va a registrar)">
-        <button onclick="addCliente('${userId}')">+ Agregar</button>
-        <p class="muted">Una vez agregado, comparte con esa persona el link de esta página y pídele que se registre con ese mismo correo — así queda vinculada automáticamente a su perfil.</p>
+      <div class="tabs">
+        <button class="tab-btn active" id="tabBtnAsesorados" onclick="switchEntrenadorTab('asesorados','${userId}')">Asesorados</button>
+        <button class="tab-btn" id="tabBtnAlimentos" onclick="switchEntrenadorTab('alimentos','${userId}')">Base de alimentos</button>
       </div>
+      <div id="entrenadorTabContent">Cargando…</div>
+    </div>
+  `;
+  await switchEntrenadorTab('asesorados', userId);
+}
+
+async function switchEntrenadorTab(tab, userId){
+  document.getElementById('tabBtnAsesorados').classList.toggle('active', tab==='asesorados');
+  document.getElementById('tabBtnAlimentos').classList.toggle('active', tab==='alimentos');
+  if(tab === 'asesorados'){
+    await renderAsesoradosTab(userId);
+  } else {
+    await renderAlimentosTab();
+  }
+}
+
+async function renderAsesoradosTab(userId){
+  const { data: clientes } = await sb.from('clientes').select('*').eq('entrenador_id', userId).order('nombre');
+  let rows = (clientes||[]).map(c=>`<tr><td>${c.nombre}</td><td>${c.email||'—'}</td><td>${c.objetivo||'—'}</td><td>${c.auth_user_id ? 'Sí' : 'No'}</td></tr>`).join('');
+  document.getElementById('entrenadorTabContent').innerHTML = `
+    <h2>Tus asesorados</h2>
+    <table><thead><tr><th>Nombre</th><th>Correo</th><th>Objetivo</th><th>Ya entró</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="4" class="muted">Aún no tienes asesorados.</td></tr>'}</tbody></table>
+
+    <h2>Agregar asesorado</h2>
+    <div class="row">
+      <input type="text" id="newNombre" placeholder="Nombre">
+      <input type="email" id="newEmail" placeholder="Correo (con el que él/ella se va a registrar)">
+      <button onclick="addCliente('${userId}')">+ Agregar</button>
+      <p class="muted">Una vez agregado, comparte con esa persona el link de esta página y pídele que se registre con ese mismo correo — así queda vinculada automáticamente a su perfil.</p>
     </div>
   `;
 }
@@ -130,7 +158,62 @@ async function addCliente(userId){
   const email = document.getElementById('newEmail').value.trim();
   if(!nombre) return;
   await sb.from('clientes').insert({ entrenador_id: userId, nombre, email: email || null });
-  showEntrenadorDashboard(userId);
+  renderAsesoradosTab(userId);
+}
+
+let alimentosCache = null;
+
+async function renderAlimentosTab(){
+  const content = document.getElementById('entrenadorTabContent');
+  content.innerHTML = `
+    <div class="inline" style="margin-bottom:10px;">
+      <input type="text" id="foodSearch" placeholder="Buscar alimento..." style="flex:1;" oninput="filterAlimentos()">
+      <select id="foodCatFilter" onchange="filterAlimentos()"><option value="">Todas las categorías</option></select>
+    </div>
+    <div class="scroll">
+      <table><thead><tr><th>Alimento</th><th>Kcal</th><th>Prot (g)</th><th>Carb (g)</th><th>Grasa (g)</th><th>Fibra (g)</th></tr></thead>
+      <tbody id="foodTableBody"><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody></table>
+    </div>
+  `;
+
+  if(!alimentosCache){
+    const { data, error } = await sb.from('alimentos').select('*').order('categoria').order('nombre');
+    if(error){
+      document.getElementById('foodTableBody').innerHTML = `<tr><td colspan="6" class="muted">Error cargando: ${error.message}</td></tr>`;
+      return;
+    }
+    alimentosCache = data;
+  }
+
+  const cats = [...new Set(alimentosCache.map(f=>f.categoria))];
+  document.getElementById('foodCatFilter').innerHTML = '<option value="">Todas las categorías</option>' + cats.map(c=>`<option value="${c}">${c}</option>`).join('');
+
+  renderFoodRows(alimentosCache);
+}
+
+function renderFoodRows(list){
+  const byCat = {};
+  list.forEach(f=>{ (byCat[f.categoria]=byCat[f.categoria]||[]).push(f); });
+  let html = '';
+  Object.keys(byCat).forEach(cat=>{
+    html += `<tr><td colspan="6" class="cat-header">${cat}</td></tr>`;
+    byCat[cat].forEach(f=>{
+      html += `<tr><td>${f.nombre}${f.unidad_label ? `<br><span class="muted">1 ${f.unidad_label} ≈ ${f.unidad_gramos} g</span>` : ''}</td><td>${f.kcal}</td><td>${f.proteina}</td><td>${f.carbohidratos}</td><td>${f.grasa}</td><td>${f.fibra}</td></tr>`;
+    });
+  });
+  document.getElementById('foodTableBody').innerHTML = html || '<tr><td colspan="6" class="muted">Sin resultados.</td></tr>';
+}
+
+function filterAlimentos(){
+  if(!alimentosCache) return;
+  const q = document.getElementById('foodSearch').value.trim().toLowerCase();
+  const cat = document.getElementById('foodCatFilter').value;
+  const filtered = alimentosCache.filter(f=>{
+    const matchQ = !q || f.nombre.toLowerCase().includes(q);
+    const matchC = !cat || f.categoria === cat;
+    return matchQ && matchC;
+  });
+  renderFoodRows(filtered);
 }
 
 async function showClienteDashboard(userId){
@@ -147,6 +230,7 @@ async function showClienteDashboard(userId){
 }
 
 window.login = login; window.signup = signup; window.logout = logout; window.addCliente = addCliente;
+window.switchEntrenadorTab = switchEntrenadorTab; window.filterAlimentos = filterAlimentos;
 
 init();
 </script>
