@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YNL — Panel</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{ --ink:#111111; --bg:#FAFAF8; --border:#E3E2DD; --surface:#F1F0EC; --muted:#767672; }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--ink);margin:0;padding:24px;}
+  input,button,select{font-family:inherit;font-size:15px;padding:9px 10px;border:1px solid var(--border);border-radius:4px;}
+  button{background:var(--ink);color:#fff;border:none;cursor:pointer;}
+  button.secondary{background:none;color:var(--ink);border:1px solid var(--ink);}
+  .card{background:#fff;border:1px solid var(--border);border-radius:6px;padding:20px;margin-bottom:14px;max-width:460px;}
+  .card.wide{max-width:760px;}
+  h1{font-size:21px;font-weight:500;margin:0 0 14px;}
+  h2{font-size:14px;font-weight:600;margin:18px 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;}
+  .row{display:flex;flex-direction:column;gap:10px;}
+  .inline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between;}
+  .error{color:#B23A3A;font-size:13px;margin:6px 0 0;}
+  .msg{color:var(--ink);font-size:13px;margin:6px 0 0;}
+  table{width:100%;border-collapse:collapse;}
+  td,th{padding:8px;border-top:1px solid var(--border);text-align:left;font-size:14px;}
+  .muted{color:var(--muted);font-size:13px;}
+</style>
+</head>
+<body>
+
+<div id="app">Cargando…</div>
+
+<script>
+const SUPABASE_URL = "https://thfnhfeysvomoiwdguvs.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_8b8P9eK5ZKgy4QFjF9KV0w_1LF37Jb-";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const app = document.getElementById('app');
+
+async function init(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(session){
+    showDashboard(session);
+  } else {
+    showLogin();
+  }
+}
+
+function showLogin(){
+  app.innerHTML = `
+    <div class="card">
+      <h1>YNL — Iniciar sesión</h1>
+      <div class="row">
+        <input type="email" id="email" placeholder="Correo">
+        <input type="password" id="password" placeholder="Contraseña">
+        <div class="inline">
+          <button onclick="login()">Entrar</button>
+          <button class="secondary" onclick="signup()">Crear cuenta</button>
+        </div>
+        <p class="error" id="err"></p>
+      </div>
+    </div>
+  `;
+}
+
+async function login(){
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ document.getElementById('err').textContent = error.message; return; }
+  init();
+}
+
+async function signup(){
+  const email = document.getElementById('email').value.trim();
+  const password = document.getElementById('password').value;
+  const { error } = await sb.auth.signUp({ email, password });
+  const err = document.getElementById('err');
+  if(error){ err.textContent = error.message; return; }
+  err.classList.remove('error'); err.classList.add('msg');
+  err.textContent = 'Cuenta creada. Si Supabase pide confirmación por correo, revisa tu bandeja, confirma, y luego inicia sesión aquí.';
+}
+
+async function logout(){
+  await sb.auth.signOut();
+  init();
+}
+
+async function showDashboard(session){
+  const userId = session.user.id;
+  const { data: profile } = await sb.from('profiles').select('*').eq('id', userId).single();
+
+  if(!profile){
+    app.innerHTML = `<div class="card"><p>No encontré tu perfil todavía. Si acabas de crear tu cuenta, espera unos segundos y recarga la página.</p><button class="secondary" onclick="logout()">Cerrar sesión</button></div>`;
+    return;
+  }
+
+  if(profile.rol === 'entrenador'){
+    await showEntrenadorDashboard(userId);
+  } else {
+    await showClienteDashboard(userId);
+  }
+}
+
+async function showEntrenadorDashboard(userId){
+  const { data: clientes } = await sb.from('clientes').select('*').eq('entrenador_id', userId).order('nombre');
+  let rows = (clientes||[]).map(c=>`<tr><td>${c.nombre}</td><td>${c.email||'—'}</td><td>${c.objetivo||'—'}</td><td>${c.auth_user_id ? 'Sí' : 'No'}</td></tr>`).join('');
+  app.innerHTML = `
+    <div class="card wide">
+      <div class="inline">
+        <h1>Panel del entrenador</h1>
+        <button class="secondary" onclick="logout()">Cerrar sesión</button>
+      </div>
+      <h2>Tus asesorados</h2>
+      <table><thead><tr><th>Nombre</th><th>Correo</th><th>Objetivo</th><th>Ya entró</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="4" class="muted">Aún no tienes asesorados.</td></tr>'}</tbody></table>
+
+      <h2>Agregar asesorado</h2>
+      <div class="row">
+        <input type="text" id="newNombre" placeholder="Nombre">
+        <input type="email" id="newEmail" placeholder="Correo (con el que él/ella se va a registrar)">
+        <button onclick="addCliente('${userId}')">+ Agregar</button>
+        <p class="muted">Una vez agregado, comparte con esa persona el link de esta página y pídele que se registre con ese mismo correo — así queda vinculada automáticamente a su perfil.</p>
+      </div>
+    </div>
+  `;
+}
+
+async function addCliente(userId){
+  const nombre = document.getElementById('newNombre').value.trim();
+  const email = document.getElementById('newEmail').value.trim();
+  if(!nombre) return;
+  await sb.from('clientes').insert({ entrenador_id: userId, nombre, email: email || null });
+  showEntrenadorDashboard(userId);
+}
+
+async function showClienteDashboard(userId){
+  const { data: cliente } = await sb.from('clientes').select('*').eq('auth_user_id', userId).maybeSingle();
+  app.innerHTML = `
+    <div class="card">
+      <div class="inline">
+        <h1>Hola${cliente ? ', '+cliente.nombre : ''}</h1>
+        <button class="secondary" onclick="logout()">Cerrar sesión</button>
+      </div>
+      <p class="muted">Esta es la primera versión conectada a tu cuenta real. El registro de comidas, metas y peso se agregan en el siguiente paso.</p>
+    </div>
+  `;
+}
+
+window.login = login; window.signup = signup; window.logout = logout; window.addCliente = addCliente;
+
+init();
+</script>
+</body>
+</html>
