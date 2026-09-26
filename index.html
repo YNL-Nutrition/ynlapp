@@ -6,6 +6,7 @@
 <title>YNL — Panel</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
   :root{
     --ink:#111111; --muted:#767672; --faint:#A8A8A3;
@@ -59,7 +60,8 @@
   .field label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px;}
   .portion-input{width:70px;}
   .charts-row{display:flex;gap:16px;flex-wrap:wrap;}
-  .chart-box{flex:1;min-width:240px;max-width:340px;}
+  .chart-box{flex:1;min-width:180px;max-width:230px;}
+  .grid2 > .field{display:flex;flex-direction:column;justify-content:flex-end;}
   .chart-box h3{font-size:12px;color:var(--muted);margin:0 0 8px;}
 </style>
 </head>
@@ -423,6 +425,8 @@ async function renderClienteDetail(clienteId, opts){
       </div>
       <div style="margin-top:12px;"><button onclick="saveGoals()">Guardar metas</button></div>
 
+      <div id="exportArea">
+      <p id="exportTitle" style="font-size:14px;font-weight:600;margin:0 0 10px;"></p>
       <h2>Registro diario</h2>
       <div class="inline" style="margin-bottom:10px;">
         <div class="field"><label>Fecha</label><input type="date" id="logDate" value="${vDate}" onchange="onDateChange()"></div>
@@ -445,13 +449,14 @@ async function renderClienteDetail(clienteId, opts){
         <div class="chart-box"><h3>Distribución calórica</h3><canvas id="macroChart"></canvas></div>
         <div class="chart-box"><h3>Kcal vs meta</h3><canvas id="kcalChart"></canvas></div>
       </div>
+      </div>
+
+      <div style="max-width:1200px;margin:0 auto 16px;display:flex;justify-content:flex-end;">
+        <button class="secondary" onclick="downloadMenu()">⬇ Descargar menú del día (imagen)</button>
+      </div>
 
       <h2>Historial (últimos 7 días)</h2>
       <canvas id="historyChart" height="90"></canvas>
-
-      <h2>Notas del día</h2>
-      <textarea id="dayNote" rows="3" style="width:100%;max-width:700px;" placeholder="Observaciones de este día..."></textarea>
-      <div style="margin-top:8px;"><button onclick="saveDayNote()">Guardar nota</button></div>
 
       <h2>Peso corporal</h2>
       <div class="inline" style="margin-bottom:10px;">
@@ -462,6 +467,10 @@ async function renderClienteDetail(clienteId, opts){
       <div id="weightListWrap"></div>
       <p class="muted" id="weightAvgNote"></p>
       <canvas id="weightChart" height="90"></canvas>
+
+      <h2>Notas del día</h2>
+      <textarea id="dayNote" rows="3" style="width:100%;max-width:700px;" placeholder="Observaciones de este día..."></textarea>
+      <div style="margin-top:8px;"><button onclick="saveDayNote()">Guardar nota</button></div>
     </div>
   `;
 
@@ -582,6 +591,29 @@ async function loadLogForDate(d){
   renderLog();
   renderProgress();
   renderCharts();
+  updateExportHeader();
+}
+
+function updateExportHeader(){
+  const title = document.getElementById('exportTitle');
+  if(!title) return;
+  let fecha = new Date(vDate+'T00:00:00').toLocaleDateString('es-CO', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+  fecha = fecha.charAt(0).toUpperCase()+fecha.slice(1);
+  title.textContent = `${vCliente.nombre} — ${fecha}`;
+}
+
+async function downloadMenu(){
+  const area = document.getElementById('exportArea');
+  if(!area || typeof html2canvas === 'undefined'){ alert('No se pudo generar la imagen.'); return; }
+  const canvas = await html2canvas(area, { backgroundColor: '#FAFAF8', scale: 2 });
+  const dataUrl = canvas.toDataURL('image/png');
+  const slug = (vCliente.nombre||'asesorado').replace(/[^a-zA-Z0-9]+/g,'_');
+  const link = document.createElement('a');
+  link.download = `menu_${slug}_${vDate}.png`;
+  link.href = dataUrl;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 async function addEntry(){
@@ -766,7 +798,7 @@ window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=s
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
-window.addWeight=addWeight; window.deleteWeight=deleteWeight;
+window.addWeight=addWeight; window.deleteWeight=deleteWeight; window.downloadMenu=downloadMenu;
 
 init();
 </script>
