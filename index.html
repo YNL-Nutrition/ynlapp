@@ -26,6 +26,9 @@
     font-family:inherit;font-size:15px;padding:9px 10px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--ink);
   }
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink);}
+  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+  input[type=number]{-moz-appearance:textfield;appearance:textfield;}
+  select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0l5 6 5-6z' fill='%23767672'/></svg>");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;}
   button{background:var(--ink);color:#fff;border:none;cursor:pointer;font-weight:500;}
   button:hover{background:#000;}
   button.secondary{background:none;color:var(--ink);border:1px solid var(--ink);}
