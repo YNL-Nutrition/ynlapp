@@ -370,40 +370,75 @@ async function renderClienteDetail(clienteId, opts){
 
   app.innerHTML = `
     <div class="card">
-      <div class="inline">
+      <div class="inline" style="align-items:center;">
         <h1>${opts.isSelf ? 'Hola, '+cliente.nombre : cliente.nombre}</h1>
         <div style="display:flex;gap:8px;">
           ${opts.isSelf ? '' : `<button class="secondary" onclick="showEntrenadorDashboard('${opts.entrenadorUserId}')">← Volver a asesorados</button>`}
           <button class="secondary" onclick="logout()">Cerrar sesión</button>
         </div>
       </div>
-
-      <h2>Perfil</h2>
-      <div class="grid2">
-        <div class="field"><label>Edad</label><input type="number" id="p_edad" value="${cliente.edad ?? ''}"></div>
-        <div class="field"><label>Sexo</label>
-          <select id="p_sexo">
-            <option value="" ${!cliente.sexo?'selected':''}>—</option>
-            <option value="Femenino" ${cliente.sexo==='Femenino'?'selected':''}>Femenino</option>
-            <option value="Masculino" ${cliente.sexo==='Masculino'?'selected':''}>Masculino</option>
-            <option value="Otro" ${cliente.sexo==='Otro'?'selected':''}>Otro</option>
-          </select>
-        </div>
-        <div class="field"><label>Peso actual (kg)</label><input type="number" step="0.1" id="p_peso" value="${cliente.peso ?? ''}"></div>
-        <div class="field"><label>Altura (cm)</label><input type="number" id="p_altura" value="${cliente.altura ?? ''}"></div>
+      <div class="tabs">
+        <button class="tab-btn" id="ctabPerfil" onclick="switchClienteTab('perfil')">Perfil</button>
+        <button class="tab-btn active" id="ctabNutricion" onclick="switchClienteTab('nutricion')">Nutrición</button>
+        <button class="tab-btn" id="ctabEntrenamiento" onclick="switchClienteTab('entrenamiento')">Entrenamiento</button>
       </div>
-      <div class="field" style="margin-top:8px;max-width:300px;"><label>Objetivo actual</label>
-        <select id="p_objetivo">
-          <option value="" ${!cliente.objetivo?'selected':''}>—</option>
-          <option ${cliente.objetivo==='Déficit calórico'?'selected':''}>Déficit calórico</option>
-          <option ${cliente.objetivo==='Superávit calórico'?'selected':''}>Superávit calórico</option>
-          <option ${cliente.objetivo==='Recomposición corporal'?'selected':''}>Recomposición corporal</option>
-          <option ${cliente.objetivo==='Reverse diet'?'selected':''}>Reverse diet</option>
-          <option ${cliente.objetivo==='Mantenimiento'?'selected':''}>Mantenimiento</option>
+      <div id="clienteTabContent">Cargando…</div>
+    </div>
+  `;
+
+  await switchClienteTab('nutricion');
+}
+
+async function switchClienteTab(tab){
+  document.getElementById('ctabPerfil').classList.toggle('active', tab==='perfil');
+  document.getElementById('ctabNutricion').classList.toggle('active', tab==='nutricion');
+  document.getElementById('ctabEntrenamiento').classList.toggle('active', tab==='entrenamiento');
+  if(tab==='perfil') renderPerfilTab();
+  else if(tab==='nutricion') await renderNutricionTab();
+  else renderEntrenamientoTab();
+}
+
+function renderPerfilTab(){
+  const cliente = vCliente;
+  document.getElementById('clienteTabContent').innerHTML = `
+    <h2>Datos básicos</h2>
+    <div class="grid2">
+      <div class="field"><label>Edad</label><input type="number" id="p_edad" value="${cliente.edad ?? ''}"></div>
+      <div class="field"><label>Sexo</label>
+        <select id="p_sexo">
+          <option value="" ${!cliente.sexo?'selected':''}>—</option>
+          <option value="Femenino" ${cliente.sexo==='Femenino'?'selected':''}>Femenino</option>
+          <option value="Masculino" ${cliente.sexo==='Masculino'?'selected':''}>Masculino</option>
+          <option value="Otro" ${cliente.sexo==='Otro'?'selected':''}>Otro</option>
         </select>
       </div>
-      <div style="margin-top:10px;"><button onclick="saveProfile()">Guardar perfil</button></div>
+      <div class="field"><label>Peso actual (kg)</label><input type="number" step="0.1" id="p_peso" value="${cliente.peso ?? ''}"></div>
+      <div class="field"><label>Altura (cm)</label><input type="number" id="p_altura" value="${cliente.altura ?? ''}"></div>
+    </div>
+    <div class="field" style="margin-top:8px;max-width:300px;"><label>Objetivo actual</label>
+      <select id="p_objetivo">
+        <option value="" ${!cliente.objetivo?'selected':''}>—</option>
+        <option ${cliente.objetivo==='Déficit calórico'?'selected':''}>Déficit calórico</option>
+        <option ${cliente.objetivo==='Superávit calórico'?'selected':''}>Superávit calórico</option>
+        <option ${cliente.objetivo==='Recomposición corporal'?'selected':''}>Recomposición corporal</option>
+        <option ${cliente.objetivo==='Reverse diet'?'selected':''}>Reverse diet</option>
+        <option ${cliente.objetivo==='Mantenimiento'?'selected':''}>Mantenimiento</option>
+      </select>
+    </div>
+    <div style="margin-top:10px;"><button onclick="saveProfile()">Guardar perfil</button></div>
+  `;
+}
 
+function renderEntrenamientoTab(){
+  document.getElementById('clienteTabContent').innerHTML = `
+    <h2>Entrenamiento</h2>
+    <p class="muted">Esta sección está en construcción — próximamente vamos a construir aquí el seguimiento de entrenamiento.</p>
+  `;
+}
+
+async function renderNutricionTab(){
+  const cliente = vCliente;
+  document.getElementById('clienteTabContent').innerHTML = `
       <h2>Metas diarias</h2>
       <div class="grid2">
         <div class="field"><label>Kcal</label><input type="number" id="g_kcal"></div>
@@ -476,7 +511,6 @@ async function renderClienteDetail(clienteId, opts){
       <h2>Notas del día</h2>
       <textarea id="dayNote" rows="3" style="width:100%;max-width:700px;" placeholder="Observaciones de este día..."></textarea>
       <div style="margin-top:8px;"><button onclick="saveDayNote()">Guardar nota</button></div>
-    </div>
   `;
 
   populateFoodSelect();
@@ -800,6 +834,7 @@ window.login=login; window.signup=signup; window.logout=logout; window.addClient
 window.switchEntrenadorTab=switchEntrenadorTab; window.filterAlimentos=filterAlimentos;
 window.openFoodModal=openFoodModal; window.closeFoodModal=closeFoodModal; window.saveFood=saveFood;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
+window.switchClienteTab=switchClienteTab;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
