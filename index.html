@@ -26,8 +26,6 @@
     font-family:inherit;font-size:15px;padding:9px 10px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--ink);
   }
   input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ink);}
-  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
-  input[type=number]{-moz-appearance:textfield;appearance:textfield;}
   select{appearance:none;-webkit-appearance:none;-moz-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M0 0l5 6 5-6z' fill='%23767672'/></svg>");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px;}
   button{background:var(--ink);color:#fff;border:none;cursor:pointer;font-weight:500;}
   button:hover{background:#000;}
@@ -48,7 +46,7 @@
   .muted{color:var(--muted);font-size:13px;}
   .tabs{display:flex;gap:2px;margin-bottom:18px;border-bottom:1px solid var(--border);}
   .tab-btn{background:none;border:none;padding:9px 14px;font-size:14px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-family:inherit;}
-  .tab-btn.active{color:var(--ink);font-weight:600;border-bottom-color:var(--ink);}
+  .tab-btn.active{background:var(--ink);color:#fff;font-weight:600;border-bottom-color:var(--ink);border-radius:4px 4px 0 0;}
   .scroll{max-height:420px;overflow-y:auto;border-radius:6px;border:1px solid var(--border);}
   .scroll table{border:none;}
   .cat-header,.meal-header{background:var(--surface);font-weight:600;font-size:11px;padding:7px 10px;letter-spacing:0.02em;}
@@ -61,8 +59,9 @@
   .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}
   .field label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px;}
   .portion-input{width:70px;}
-  .charts-row{display:flex;gap:16px;flex-wrap:wrap;}
-  .chart-box{flex:1;min-width:180px;max-width:230px;}
+  .charts-row{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;}
+  .chart-box{flex:0 0 200px;width:200px;height:220px;}
+  .chart-box canvas{width:200px !important;height:170px !important;}
   .grid2 > .field{display:flex;flex-direction:column;justify-content:flex-end;}
   .chart-box h3{font-size:12px;color:var(--muted);margin:0 0 8px;}
 </style>
@@ -80,7 +79,8 @@
   <div class="modal">
     <h1 style="font-size:16px;">Agregar alimento (valores por 100 g)</h1>
     <label>Categoría</label>
-    <input type="text" id="f_cat" placeholder="Ej. Cereales y tubérculos">
+    <select id="f_cat" onchange="onFoodCatChange()"></select>
+    <input type="text" id="f_cat_nueva" placeholder="Nombre de la nueva categoría" style="display:none;margin-top:6px;">
     <label>Nombre del alimento</label>
     <input type="text" id="f_nombre" placeholder="Ej. Chontaduro">
     <label>Estado</label>
@@ -306,13 +306,22 @@ function slugify(name){
 
 function openFoodModal(){
   document.getElementById('foodModalErr').textContent = '';
-  ['f_cat','f_nombre','f_estado','f_fuente','f_kcal','f_prot','f_carb','f_grasa','f_fibra','f_unidad_label','f_unidad_gramos'].forEach(id=>document.getElementById(id).value='');
+  ['f_nombre','f_estado','f_fuente','f_kcal','f_prot','f_carb','f_grasa','f_fibra','f_unidad_label','f_unidad_gramos','f_cat_nueva'].forEach(id=>document.getElementById(id).value='');
+  const cats = [...new Set((alimentosCache||[]).map(f=>f.categoria))].sort();
+  const catSel = document.getElementById('f_cat');
+  catSel.innerHTML = cats.map(c=>`<option value="${c}">${c}</option>`).join('') + '<option value="__nueva__">+ Nueva categoría…</option>';
+  document.getElementById('f_cat_nueva').style.display = 'none';
   document.getElementById('foodModalBg').classList.add('show');
+}
+function onFoodCatChange(){
+  const isNew = document.getElementById('f_cat').value === '__nueva__';
+  document.getElementById('f_cat_nueva').style.display = isNew ? '' : 'none';
 }
 function closeFoodModal(){ document.getElementById('foodModalBg').classList.remove('show'); }
 
 async function saveFood(){
-  const categoria = document.getElementById('f_cat').value.trim();
+  const catSelVal = document.getElementById('f_cat').value;
+  const categoria = catSelVal === '__nueva__' ? document.getElementById('f_cat_nueva').value.trim() : catSelVal;
   const nombre = document.getElementById('f_nombre').value.trim();
   const num = (id)=>{ const v = parseFloat(document.getElementById(id).value.replace(',','.')); return isNaN(v) ? null : v; };
   const kcal = num('f_kcal'), prot = num('f_prot'), carb = num('f_carb'), grasa = num('f_grasa'), fibra = num('f_fibra');
@@ -374,7 +383,7 @@ async function renderClienteDetail(clienteId, opts){
         <h1>${opts.isSelf ? 'Hola, '+cliente.nombre : cliente.nombre}</h1>
         <div style="display:flex;gap:8px;">
           ${opts.isSelf ? '' : `<button class="secondary" onclick="showEntrenadorDashboard('${opts.entrenadorUserId}')">← Volver a asesorados</button>`}
-          <button class="secondary" onclick="logout()">Cerrar sesión</button>
+          ${opts.isSelf ? '' : `<button class="secondary" onclick="logout()">Cerrar sesión</button>`}
         </div>
       </div>
       <div class="tabs">
@@ -383,6 +392,7 @@ async function renderClienteDetail(clienteId, opts){
         <button class="tab-btn" id="ctabEntrenamiento" onclick="switchClienteTab('entrenamiento')">Entrenamiento</button>
       </div>
       <div id="clienteTabContent">Cargando…</div>
+      ${opts.isSelf ? '<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);"><button class="secondary" onclick="logout()">Cerrar sesión</button></div>' : ''}
     </div>
   `;
 
@@ -414,6 +424,8 @@ function renderPerfilTab(){
       </div>
       <div class="field"><label>Peso actual (kg)</label><input type="number" step="0.1" id="p_peso" value="${cliente.peso ?? ''}"></div>
       <div class="field"><label>Altura (cm)</label><input type="number" id="p_altura" value="${cliente.altura ?? ''}"></div>
+      <div class="field"><label>Kcal de mantenimiento</label><input type="number" id="p_kcal_mant" value="${cliente.kcal_mantenimiento ?? ''}"></div>
+      <div class="field"><label>% de grasa actual</label><input type="number" step="0.1" id="p_grasa_pct" value="${cliente.grasa_corporal ?? ''}"></div>
     </div>
     <div class="field" style="margin-top:8px;max-width:300px;"><label>Objetivo actual</label>
       <select id="p_objetivo">
@@ -424,6 +436,9 @@ function renderPerfilTab(){
         <option ${cliente.objetivo==='Reverse diet'?'selected':''}>Reverse diet</option>
         <option ${cliente.objetivo==='Mantenimiento'?'selected':''}>Mantenimiento</option>
       </select>
+    </div>
+    <div class="field" style="margin-top:12px;max-width:700px;"><label>Notas del perfil</label>
+      <textarea id="p_notas" rows="4" style="width:100%;" placeholder="Observaciones generales, historial relevante, etc.">${cliente.notas_perfil ?? ''}</textarea>
     </div>
     <div style="margin-top:10px;"><button onclick="saveProfile()">Guardar perfil</button></div>
   `;
@@ -463,7 +478,6 @@ async function renderNutricionTab(){
       <div style="margin-top:12px;"><button onclick="saveGoals()">Guardar metas</button></div>
 
       <div id="exportArea">
-      <p id="exportTitle" style="font-size:14px;font-weight:600;margin:0 0 10px;"></p>
       <h2>Registro diario</h2>
       <div class="inline" style="margin-bottom:10px;">
         <div class="field"><label>Fecha</label><input type="date" id="logDate" value="${vDate}" onchange="onDateChange()"></div>
@@ -527,6 +541,9 @@ async function saveProfile(){
     peso: document.getElementById('p_peso').value || null,
     altura: document.getElementById('p_altura').value || null,
     objetivo: document.getElementById('p_objetivo').value || null,
+    kcal_mantenimiento: document.getElementById('p_kcal_mant').value || null,
+    grasa_corporal: document.getElementById('p_grasa_pct').value || null,
+    notas_perfil: document.getElementById('p_notas').value || null,
   };
   await sb.from('clientes').update(upd).eq('id', vCliente.id);
   vCliente = Object.assign(vCliente, upd);
@@ -633,18 +650,22 @@ async function loadLogForDate(d){
   updateExportHeader();
 }
 
-function updateExportHeader(){
-  const title = document.getElementById('exportTitle');
-  if(!title) return;
-  let fecha = new Date(vDate+'T00:00:00').toLocaleDateString('es-CO', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
-  fecha = fecha.charAt(0).toUpperCase()+fecha.slice(1);
-  title.textContent = `${vCliente.nombre} — ${fecha}`;
-}
+function updateExportHeader(){ /* el título ahora solo se agrega al momento de exportar la imagen */ }
 
 async function downloadMenu(){
   const area = document.getElementById('exportArea');
   if(!area || typeof html2canvas === 'undefined'){ alert('No se pudo generar la imagen.'); return; }
+
+  let fecha = new Date(vDate+'T00:00:00').toLocaleDateString('es-CO', {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+  fecha = fecha.charAt(0).toUpperCase()+fecha.slice(1);
+  const title = document.createElement('p');
+  title.style.cssText = 'font-size:14px;font-weight:600;margin:0 0 10px;';
+  title.textContent = `${vCliente.nombre} — ${fecha}`;
+  area.insertBefore(title, area.firstChild);
+
   const canvas = await html2canvas(area, { backgroundColor: '#FAFAF8', scale: 2 });
+  area.removeChild(title);
+
   const dataUrl = canvas.toDataURL('image/png');
   const slug = (vCliente.nombre||'asesorado').replace(/[^a-zA-Z0-9]+/g,'_');
   const link = document.createElement('a');
@@ -726,9 +747,9 @@ function renderCharts(){
   if(macroChart) macroChart.destroy();
   if(kcalChart) kcalChart.destroy();
   const hasData = (kp+kc+kf)>0;
-  macroChart = new Chart(mCtx, { type:'doughnut', data:{ labels:['Proteína','Carbohidratos','Grasa'], datasets:[{ data: hasData?[kp,kc,kf]:[1,1,1], backgroundColor:['#D64545','#3B6EA5','#D9A72E'], borderWidth:0 }]}, options:{ plugins:{ legend:{position:'bottom', labels:{font:{size:10}}}, tooltip:{enabled:hasData} } } });
+  macroChart = new Chart(mCtx, { type:'doughnut', data:{ labels:['Proteína','Carbohidratos','Grasa'], datasets:[{ data: hasData?[kp,kc,kf]:[1,1,1], backgroundColor:['#D64545','#3B6EA5','#D9A72E'], borderWidth:0 }]}, options:{ maintainAspectRatio:false, plugins:{ legend:{position:'bottom', labels:{font:{size:10}}}, tooltip:{enabled:hasData} } } });
   const rem = Math.max(0, vGoals.kcal - totals.kcal);
-  kcalChart = new Chart(kCtx, { type:'doughnut', data:{ labels:['Consumidas','Restantes'], datasets:[{ data: vGoals.kcal>0 ? [totals.kcal, rem] : [totals.kcal,0], backgroundColor:[totals.kcal>vGoals.kcal && vGoals.kcal>0 ? '#767672':'#111111','#EDEDE8'], borderWidth:0 }]}, options:{ plugins:{ legend:{position:'bottom', labels:{font:{size:10}}} } } });
+  kcalChart = new Chart(kCtx, { type:'doughnut', data:{ labels:['Consumidas','Restantes'], datasets:[{ data: vGoals.kcal>0 ? [totals.kcal, rem] : [totals.kcal,0], backgroundColor:[totals.kcal>vGoals.kcal && vGoals.kcal>0 ? '#767672':'#111111','#EDEDE8'], borderWidth:0 }]}, options:{ maintainAspectRatio:false, plugins:{ legend:{position:'bottom', labels:{font:{size:10}}} } } });
   renderHistoryChart();
 }
 
@@ -832,7 +853,7 @@ function renderWeightChart(){
 
 window.login=login; window.signup=signup; window.logout=logout; window.addCliente=addCliente;
 window.switchEntrenadorTab=switchEntrenadorTab; window.filterAlimentos=filterAlimentos;
-window.openFoodModal=openFoodModal; window.closeFoodModal=closeFoodModal; window.saveFood=saveFood;
+window.openFoodModal=openFoodModal; window.closeFoodModal=closeFoodModal; window.saveFood=saveFood; window.onFoodCatChange=onFoodCatChange;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
