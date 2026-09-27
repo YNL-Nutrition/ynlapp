@@ -37,7 +37,9 @@
   .card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:22px;margin:0 auto 16px;max-width:1200px;width:100%;}
   .card.narrow{max-width:420px;}
   .row{display:flex;flex-direction:column;gap:10px;max-width:360px;}
-  .inline{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;}
+  .inline{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;}
+  input:not([type=checkbox]):not([type=radio]),select,textarea{width:100%;}
+  .field{min-width:0;}
   .error{color:#B23A3A;font-size:13px;margin:6px 0 0;}
   .msg{color:var(--ink);font-size:13px;margin:6px 0 0;}
   table{width:100%;border-collapse:collapse;}
@@ -452,7 +454,10 @@ async function renderClienteDetail(clienteId, opts){
       </div>
 
       <div style="max-width:1200px;margin:0 auto 16px;display:flex;justify-content:flex-end;">
-        <button class="secondary" onclick="downloadMenu()">⬇ Descargar menú del día (imagen)</button>
+        <button class="secondary" onclick="downloadMenu()" style="display:inline-flex;align-items:center;gap:6px;width:auto;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v12"/><path d="M6 12l6 6 6-6"/><path d="M4 20h16"/></svg>
+          Descargar menú del día (imagen)
+        </button>
       </div>
 
       <h2>Historial (últimos 7 días)</h2>
