@@ -586,7 +586,7 @@ async function renderNutricionTab(){
       </div>
 
       <h2>Historial (últimos 7 días)</h2>
-      <div class="chart-wrap-wide"><canvas id="historyChart"></canvas></div>
+      <div class="chart-wrap-wide"><canvas id="historyChart" height="90"></canvas></div>
 
       <h2>Peso corporal</h2>
       <div class="inline" style="margin-bottom:10px;">
@@ -596,7 +596,7 @@ async function renderNutricionTab(){
       </div>
       <div id="weightListWrap"></div>
       <p class="muted" id="weightAvgNote"></p>
-      <div class="chart-wrap-wide"><canvas id="weightChart"></canvas></div>
+      <div class="chart-wrap-wide"><canvas id="weightChart" height="90"></canvas></div>
 
       <h2>Notas del día</h2>
       <div id="dayNotesList" style="max-width:700px;"></div>
@@ -848,10 +848,11 @@ async function renderHistoryChart(){
   }
   const labels = days.map(d=> new Date(d+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric'}));
   if(historyChart) historyChart.destroy();
+  const isMobileHist = window.matchMedia('(max-width:640px)').matches;
   historyChart = new Chart(ctx, { type:'bar', data:{ labels, datasets:[
     { label:'Kcal', data:kcalByDay, backgroundColor: days.map(d=> d===vDate ? '#111111':'#D8D7D1') },
     ...(vGoals.kcal>0 ? [{ label:'Meta', data: days.map(()=>vGoals.kcal), type:'line', borderColor:'#767672', borderDash:[5,4], pointRadius:0 }] : [])
-  ]}, options:{ plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}, scales:{y:{beginAtZero:true}},
+  ]}, options:{ maintainAspectRatio: !isMobileHist, plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}, scales:{y:{beginAtZero:true}},
     onClick:(evt,els)=>{ if(els.length){ const idx=els[0].index; document.getElementById('logDate').value=days[idx]; vDate=days[idx]; loadLogForDate(vDate); } } } });
 }
 
@@ -962,7 +963,8 @@ function renderWeightChart(){
   const weekly = computeWeeklyAverages(vWeights);
   if(weightChart) weightChart.destroy();
   if(weekly.length===0) return;
-  weightChart = new Chart(ctx, { type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:'#111111', backgroundColor:'#111111', tension:0.25, pointRadius:4 }]}, options:{ plugins:{legend:{display:false}} } });
+  const isMobileWt = window.matchMedia('(max-width:640px)').matches;
+  weightChart = new Chart(ctx, { type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:'#111111', backgroundColor:'#111111', tension:0.25, pointRadius:4 }]}, options:{ maintainAspectRatio: !isMobileWt, plugins:{legend:{display:false}} } });
 }
 
 window.login=login; window.signup=signup; window.logout=logout; window.addCliente=addCliente;
