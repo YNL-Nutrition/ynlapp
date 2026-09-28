@@ -64,7 +64,10 @@
   .chart-box{flex:0 0 220px;width:220px;text-align:center;}
   .chart-box h3{text-align:center;}
   .chart-wrap{position:relative;width:180px;height:180px;margin:0 auto;}
-  .chart-wrap-wide{position:relative;width:100%;height:220px;margin:0 0 16px;}
+  @media (max-width:640px){
+    .chart-wrap-wide{position:relative;height:220px;margin:14px 0;}
+    .chart-wrap-wide + h2{margin-top:14px;}
+  }
   .chart-legend{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;font-size:11px;color:var(--muted);margin-top:10px;min-height:34px;}
   .chart-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
   .note-item{border:1px solid var(--border);border-radius:4px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
