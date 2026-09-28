@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -44,7 +45,7 @@
   td,th{padding:9px 8px;border-top:1px solid var(--border);text-align:left;font-size:14px;}
   thead th{position:sticky;top:0;background:var(--ink);color:#fff;font-size:12px;font-weight:500;letter-spacing:0.02em;}
   .muted{color:var(--muted);font-size:13px;}
-  .tabs{display:flex;gap:2px;margin-bottom:18px;border-bottom:1px solid var(--border);}
+  .tabs{display:flex;gap:2px;margin-top:18px;margin-bottom:18px;border-bottom:1px solid var(--border);}
   .tab-btn{background:none;border:none;padding:9px 14px;font-size:14px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;font-family:inherit;}
   .tab-btn.active{background:var(--ink);color:#fff;font-weight:600;border-bottom-color:var(--ink);border-radius:4px 4px 0 0;}
   .scroll{max-height:420px;overflow-y:auto;border-radius:6px;border:1px solid var(--border);}
@@ -63,6 +64,7 @@
   .chart-box{flex:0 0 220px;width:220px;text-align:center;}
   .chart-box h3{text-align:center;}
   .chart-wrap{position:relative;width:180px;height:180px;margin:0 auto;}
+  .chart-wrap-wide{position:relative;width:100%;height:220px;margin:0 0 16px;}
   .chart-legend{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;font-size:11px;color:var(--muted);margin-top:10px;min-height:34px;}
   .chart-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
   .note-item{border:1px solid var(--border);border-radius:4px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
@@ -288,7 +290,7 @@ function renderFoodRows(list){
   Object.keys(byCat).forEach(cat=>{
     html += `<tr><td colspan="7" class="cat-header">${cat}</td></tr>`;
     byCat[cat].forEach(f=>{
-      html += `<tr><td>${f.nombre}${f.unidad_label ? `<br><span class="muted">1 ${f.unidad_label} ≈ ${f.unidad_gramos} g</span>` : ''}</td><td>${f.kcal}</td><td>${f.proteina}</td><td>${f.carbohidratos}</td><td>${f.grasa}</td><td>${f.fibra}</td><td><button class="small secondary" title="Editar" onclick="openEditFood('${f.id}')">✎</button></td></tr>`;
+      html += `<tr><td>${f.nombre}${f.unidad_label ? `<br><span class="muted">1 ${f.unidad_label} ≈ ${f.unidad_gramos} g</span>` : ''}</td><td>${f.kcal}</td><td>${f.proteina}</td><td>${f.carbohidratos}</td><td>${f.grasa}</td><td>${f.fibra}</td><td style="white-space:nowrap;"><button class="small secondary" title="Editar" onclick="openEditFood('${f.id}')">✎</button> <button class="small secondary" title="Eliminar" onclick="confirmDeleteFood('${f.id}')">🗑</button></td></tr>`;
     });
   });
   document.getElementById('foodTableBody').innerHTML = html || '<tr><td colspan="7" class="muted">Sin resultados.</td></tr>';
@@ -318,6 +320,15 @@ function fillCategorySelect(selected){
   catSel.innerHTML = cats.map(c=>`<option value="${c}">${c}</option>`).join('') + '<option value="__nueva__">+ Nueva categoría…</option>';
   if(selected) catSel.value = selected;
   document.getElementById('f_cat_nueva').style.display = 'none';
+}
+
+async function confirmDeleteFood(id){
+  const f = (alimentosCache||[]).find(x=>x.id===id);
+  if(!f) return;
+  if(!confirm(`¿Eliminar "${f.nombre}" de la base de alimentos? Esta acción no se puede deshacer.`)) return;
+  const { error } = await sb.from('alimentos').delete().eq('id', id);
+  if(error){ alert('No se pudo eliminar: ' + error.message); return; }
+  await loadAlimentos();
 }
 
 function openEditFood(id){
@@ -572,7 +583,7 @@ async function renderNutricionTab(){
       </div>
 
       <h2>Historial (últimos 7 días)</h2>
-      <canvas id="historyChart" height="90"></canvas>
+      <div class="chart-wrap-wide"><canvas id="historyChart"></canvas></div>
 
       <h2>Peso corporal</h2>
       <div class="inline" style="margin-bottom:10px;">
@@ -582,7 +593,7 @@ async function renderNutricionTab(){
       </div>
       <div id="weightListWrap"></div>
       <p class="muted" id="weightAvgNote"></p>
-      <canvas id="weightChart" height="90"></canvas>
+      <div class="chart-wrap-wide"><canvas id="weightChart"></canvas></div>
 
       <h2>Notas del día</h2>
       <div id="dayNotesList" style="max-width:700px;"></div>
