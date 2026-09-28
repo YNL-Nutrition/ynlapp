@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -19,7 +20,7 @@
     -webkit-font-smoothing:antialiased;
   }
   .brand-row{display:flex;align-items:center;justify-content:center;margin:0 auto 28px;max-width:1400px;}
-  .brand-row img{height:84px;width:auto;display:block;}
+  .brand-row img{height:128px;max-width:80%;width:auto;display:block;}
   h1{font-size:21px;font-weight:500;margin:0;letter-spacing:-0.01em;}
   h2{font-size:13px;font-weight:600;margin:18px 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;}
   input,button,select,textarea{
@@ -59,9 +60,15 @@
   .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;}
   .field label{font-size:11px;color:var(--muted);display:block;margin-bottom:3px;}
   .portion-input{width:70px;}
-  .charts-row{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;}
-  .chart-box{flex:0 0 200px;width:200px;height:220px;}
-  .chart-box canvas{width:200px !important;height:170px !important;}
+  .charts-row{display:flex;gap:32px;flex-wrap:wrap;justify-content:center;}
+  .chart-box{flex:0 0 220px;width:220px;text-align:center;}
+  .chart-box h3{text-align:center;}
+  .chart-wrap{position:relative;width:180px;height:180px;margin:0 auto;}
+  .chart-legend{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;font-size:11px;color:var(--muted);margin-top:10px;min-height:34px;}
+  .chart-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
+  .note-item{border:1px solid var(--border);border-radius:4px;padding:10px 12px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+  .note-item .when{font-size:11px;color:var(--muted);margin-bottom:3px;}
+  .note-item .txt{white-space:pre-wrap;font-size:14px;}
   .grid2 > .field{display:flex;flex-direction:column;justify-content:flex-end;}
   .chart-box h3{font-size:12px;color:var(--muted);margin:0 0 8px;}
 </style>
@@ -77,7 +84,7 @@
 <!-- ===================== MODAL: AGREGAR ALIMENTO ===================== -->
 <div class="modal-bg" id="foodModalBg">
   <div class="modal">
-    <h1 style="font-size:16px;">Agregar alimento (valores por 100 g)</h1>
+    <h1 id="foodModalTitle" style="font-size:16px;">Agregar alimento (valores por 100 g)</h1>
     <label>Categoría</label>
     <select id="f_cat" onchange="onFoodCatChange()"></select>
     <input type="text" id="f_cat_nueva" placeholder="Nombre de la nueva categoría" style="display:none;margin-top:6px;">
@@ -101,7 +108,7 @@
     </div>
     <div class="modal-actions">
       <button class="secondary" onclick="closeFoodModal()">Cancelar</button>
-      <button onclick="saveFood()">Guardar</button>
+      <button id="foodModalSaveBtn" onclick="saveFood()">Guardar</button>
     </div>
     <p class="error" id="foodModalErr"></p>
   </div>
@@ -252,8 +259,8 @@ async function renderAlimentosTab(){
       <button onclick="openFoodModal()">+ Agregar alimento</button>
     </div>
     <div class="scroll">
-      <table><thead><tr><th>Alimento</th><th>Kcal</th><th>Prot (g)</th><th>Carb (g)</th><th>Grasa (g)</th><th>Fibra (g)</th></tr></thead>
-      <tbody id="foodTableBody"><tr><td colspan="6" class="muted">Cargando…</td></tr></tbody></table>
+      <table><thead><tr><th>Alimento</th><th>Kcal</th><th>Prot (g)</th><th>Carb (g)</th><th>Grasa (g)</th><th>Fibra (g)</th><th></th></tr></thead>
+      <tbody id="foodTableBody"><tr><td colspan="7" class="muted">Cargando…</td></tr></tbody></table>
     </div>
   `;
   await loadAlimentos();
@@ -263,7 +270,7 @@ async function loadAlimentos(){
   const { data, error } = await sb.from('alimentos').select('*').order('categoria').order('nombre');
   if(error){
     const tb = document.getElementById('foodTableBody');
-    if(tb) tb.innerHTML = `<tr><td colspan="6" class="muted">Error cargando: ${error.message}</td></tr>`;
+    if(tb) tb.innerHTML = `<tr><td colspan="7" class="muted">Error cargando: ${error.message}</td></tr>`;
     return;
   }
   alimentosCache = data;
@@ -280,12 +287,12 @@ function renderFoodRows(list){
   list.forEach(f=>{ (byCat[f.categoria]=byCat[f.categoria]||[]).push(f); });
   let html = '';
   Object.keys(byCat).forEach(cat=>{
-    html += `<tr><td colspan="6" class="cat-header">${cat}</td></tr>`;
+    html += `<tr><td colspan="7" class="cat-header">${cat}</td></tr>`;
     byCat[cat].forEach(f=>{
-      html += `<tr><td>${f.nombre}${f.unidad_label ? `<br><span class="muted">1 ${f.unidad_label} ≈ ${f.unidad_gramos} g</span>` : ''}</td><td>${f.kcal}</td><td>${f.proteina}</td><td>${f.carbohidratos}</td><td>${f.grasa}</td><td>${f.fibra}</td></tr>`;
+      html += `<tr><td>${f.nombre}${f.unidad_label ? `<br><span class="muted">1 ${f.unidad_label} ≈ ${f.unidad_gramos} g</span>` : ''}</td><td>${f.kcal}</td><td>${f.proteina}</td><td>${f.carbohidratos}</td><td>${f.grasa}</td><td>${f.fibra}</td><td><button class="small secondary" title="Editar" onclick="openEditFood('${f.id}')">✎</button></td></tr>`;
     });
   });
-  document.getElementById('foodTableBody').innerHTML = html || '<tr><td colspan="6" class="muted">Sin resultados.</td></tr>';
+  document.getElementById('foodTableBody').innerHTML = html || '<tr><td colspan="7" class="muted">Sin resultados.</td></tr>';
 }
 
 function filterAlimentos(){
@@ -304,7 +311,42 @@ function slugify(name){
   return name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'').toLowerCase();
 }
 
+let editingFoodId = null;
+
+function fillCategorySelect(selected){
+  const cats = [...new Set((alimentosCache||[]).map(f=>f.categoria))].sort();
+  const catSel = document.getElementById('f_cat');
+  catSel.innerHTML = cats.map(c=>`<option value="${c}">${c}</option>`).join('') + '<option value="__nueva__">+ Nueva categoría…</option>';
+  if(selected) catSel.value = selected;
+  document.getElementById('f_cat_nueva').style.display = 'none';
+}
+
+function openEditFood(id){
+  const f = (alimentosCache||[]).find(x=>x.id===id);
+  if(!f) return;
+  editingFoodId = id;
+  document.getElementById('foodModalErr').textContent = '';
+  document.getElementById('foodModalTitle').textContent = 'Editar alimento (valores por 100 g)';
+  document.getElementById('foodModalSaveBtn').textContent = 'Guardar cambios';
+  fillCategorySelect(f.categoria);
+  document.getElementById('f_cat_nueva').value = '';
+  document.getElementById('f_nombre').value = f.nombre || '';
+  document.getElementById('f_estado').value = f.estado || '';
+  document.getElementById('f_fuente').value = f.fuente || '';
+  document.getElementById('f_kcal').value = f.kcal;
+  document.getElementById('f_prot').value = f.proteina;
+  document.getElementById('f_carb').value = f.carbohidratos;
+  document.getElementById('f_grasa').value = f.grasa;
+  document.getElementById('f_fibra').value = f.fibra;
+  document.getElementById('f_unidad_label').value = f.unidad_label || '';
+  document.getElementById('f_unidad_gramos').value = f.unidad_gramos ?? '';
+  document.getElementById('foodModalBg').classList.add('show');
+}
+
 function openFoodModal(){
+  editingFoodId = null;
+  document.getElementById('foodModalTitle').textContent = 'Agregar alimento (valores por 100 g)';
+  document.getElementById('foodModalSaveBtn').textContent = 'Guardar';
   document.getElementById('foodModalErr').textContent = '';
   ['f_nombre','f_estado','f_fuente','f_kcal','f_prot','f_carb','f_grasa','f_fibra','f_unidad_label','f_unidad_gramos','f_cat_nueva'].forEach(id=>document.getElementById(id).value='');
   const cats = [...new Set((alimentosCache||[]).map(f=>f.categoria))].sort();
@@ -330,6 +372,22 @@ async function saveFood(){
   if([kcal,prot,carb,grasa,fibra].some(v=>v===null)){ err.textContent = 'Completa los 5 valores numéricos por 100 g.'; return; }
   const unidadLabel = document.getElementById('f_unidad_label').value.trim();
   const unidadGramos = num('f_unidad_gramos');
+  if(editingFoodId){
+    const { data: upd, error: updErr } = await sb.from('alimentos').update({
+      categoria, nombre,
+      estado: document.getElementById('f_estado').value.trim() || null,
+      fuente: document.getElementById('f_fuente').value.trim() || null,
+      kcal, proteina: prot, carbohidratos: carb, grasa, fibra,
+      unidad_label: unidadLabel || null,
+      unidad_gramos: (unidadLabel && unidadGramos) ? unidadGramos : null,
+    }).eq('id', editingFoodId).select();
+    if(updErr){ err.textContent = updErr.message; return; }
+    if(!upd || upd.length===0){ err.textContent = 'No se pudo actualizar (permisos). Corre el script ajustes_notas_y_permisos.sql en Supabase.'; return; }
+    editingFoodId = null;
+    closeFoodModal();
+    await loadAlimentos();
+    return;
+  }
   let id = slugify(nombre);
   const existing = (alimentosCache||[]).find(f=>f.id===id);
   if(existing) id = id + '_' + Date.now();
@@ -392,7 +450,6 @@ async function renderClienteDetail(clienteId, opts){
         <button class="tab-btn" id="ctabEntrenamiento" onclick="switchClienteTab('entrenamiento')">Entrenamiento</button>
       </div>
       <div id="clienteTabContent">Cargando…</div>
-      ${opts.isSelf ? '<div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);"><button class="secondary" onclick="logout()">Cerrar sesión</button></div>' : ''}
     </div>
   `;
 
@@ -437,11 +494,17 @@ function renderPerfilTab(){
         <option ${cliente.objetivo==='Mantenimiento'?'selected':''}>Mantenimiento</option>
       </select>
     </div>
-    <div class="field" style="margin-top:12px;max-width:700px;"><label>Notas del perfil</label>
-      <textarea id="p_notas" rows="4" style="width:100%;" placeholder="Observaciones generales, historial relevante, etc.">${cliente.notas_perfil ?? ''}</textarea>
-    </div>
     <div style="margin-top:10px;"><button onclick="saveProfile()">Guardar perfil</button></div>
+
+    <h2>Notas del perfil</h2>
+    <div id="profileNotesList" style="max-width:700px;"></div>
+    <div style="max-width:700px;">
+      <textarea id="p_nota_nueva" rows="3" placeholder="Nueva nota..."></textarea>
+      <div style="margin-top:8px;"><button onclick="saveProfileNote()">Agregar nota</button></div>
+    </div>
+    ${(vOpts && vOpts.isSelf) ? '<div style="margin-top:28px;padding-top:16px;border-top:1px solid var(--border);"><button class="secondary" onclick="logout()">Cerrar sesión</button></div>' : ''}
   `;
+  loadNotes('perfil');
 }
 
 function renderEntrenamientoTab(){
@@ -497,8 +560,8 @@ async function renderNutricionTab(){
       <h2>Progreso del día</h2>
       <div id="progressWrap"></div>
       <div class="charts-row">
-        <div class="chart-box"><h3>Distribución calórica</h3><canvas id="macroChart"></canvas></div>
-        <div class="chart-box"><h3>Kcal vs meta</h3><canvas id="kcalChart"></canvas></div>
+        <div class="chart-box"><h3>Distribución calórica</h3><div class="chart-wrap"><canvas id="macroChart"></canvas></div><div class="chart-legend" id="macroLegend"></div></div>
+        <div class="chart-box"><h3>Kcal vs meta</h3><div class="chart-wrap"><canvas id="kcalChart"></canvas></div><div class="chart-legend" id="kcalLegend"></div></div>
       </div>
       </div>
 
@@ -523,8 +586,11 @@ async function renderNutricionTab(){
       <canvas id="weightChart" height="90"></canvas>
 
       <h2>Notas del día</h2>
-      <textarea id="dayNote" rows="3" style="width:100%;max-width:700px;" placeholder="Observaciones de este día..."></textarea>
-      <div style="margin-top:8px;"><button onclick="saveDayNote()">Guardar nota</button></div>
+      <div id="dayNotesList" style="max-width:700px;"></div>
+      <div style="max-width:700px;">
+        <textarea id="dayNote" rows="3" placeholder="Nueva nota para este día..."></textarea>
+        <div style="margin-top:8px;"><button onclick="saveDayNote()">Agregar nota</button></div>
+      </div>
   `;
 
   populateFoodSelect();
@@ -543,7 +609,6 @@ async function saveProfile(){
     objetivo: document.getElementById('p_objetivo').value || null,
     kcal_mantenimiento: document.getElementById('p_kcal_mant').value || null,
     grasa_corporal: document.getElementById('p_grasa_pct').value || null,
-    notas_perfil: document.getElementById('p_notas').value || null,
   };
   await sb.from('clientes').update(upd).eq('id', vCliente.id);
   vCliente = Object.assign(vCliente, upd);
@@ -642,8 +707,7 @@ function dateKey(d){ return d; }
 async function loadLogForDate(d){
   const { data } = await sb.from('registro').select('*').eq('cliente_id', vCliente.id).eq('fecha', d).order('created_at');
   vEntries = data || [];
-  const { data: noteData } = await sb.from('notas').select('*').eq('cliente_id', vCliente.id).eq('fecha', d).maybeSingle();
-  document.getElementById('dayNote').value = noteData ? noteData.nota : '';
+  await loadNotes('dia');
   renderLog();
   renderProgress();
   renderCharts();
@@ -747,9 +811,12 @@ function renderCharts(){
   if(macroChart) macroChart.destroy();
   if(kcalChart) kcalChart.destroy();
   const hasData = (kp+kc+kf)>0;
-  macroChart = new Chart(mCtx, { type:'doughnut', data:{ labels:['Proteína','Carbohidratos','Grasa'], datasets:[{ data: hasData?[kp,kc,kf]:[1,1,1], backgroundColor:['#D64545','#3B6EA5','#D9A72E'], borderWidth:0 }]}, options:{ maintainAspectRatio:false, plugins:{ legend:{position:'bottom', labels:{font:{size:10}}}, tooltip:{enabled:hasData} } } });
+  macroChart = new Chart(mCtx, { type:'doughnut', data:{ labels:['Proteína','Carbohidratos','Grasa'], datasets:[{ data: hasData?[kp,kc,kf]:[1,1,1], backgroundColor:['#D64545','#3B6EA5','#D9A72E'], borderWidth:0 }]}, options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins:{ legend:{display:false}, tooltip:{enabled:hasData} } } });
   const rem = Math.max(0, vGoals.kcal - totals.kcal);
-  kcalChart = new Chart(kCtx, { type:'doughnut', data:{ labels:['Consumidas','Restantes'], datasets:[{ data: vGoals.kcal>0 ? [totals.kcal, rem] : [totals.kcal,0], backgroundColor:[totals.kcal>vGoals.kcal && vGoals.kcal>0 ? '#767672':'#111111','#EDEDE8'], borderWidth:0 }]}, options:{ maintainAspectRatio:false, plugins:{ legend:{position:'bottom', labels:{font:{size:10}}} } } });
+  kcalChart = new Chart(kCtx, { type:'doughnut', data:{ labels:['Consumidas','Restantes'], datasets:[{ data: vGoals.kcal>0 ? [totals.kcal, rem] : [totals.kcal,0], backgroundColor:[totals.kcal>vGoals.kcal && vGoals.kcal>0 ? '#767672':'#111111','#EDEDE8'], borderWidth:0 }]}, options:{ responsive:true, maintainAspectRatio:false, cutout:'62%', plugins:{ legend:{display:false} } } });
+  const lg = (items)=> items.map(([c,t])=>`<span><i style="background:${c}"></i>${t}</span>`).join('');
+  document.getElementById('macroLegend').innerHTML = lg([['#D64545','Proteína'],['#3B6EA5','Carbohidratos'],['#D9A72E','Grasa']]);
+  document.getElementById('kcalLegend').innerHTML = lg([[totals.kcal>vGoals.kcal && vGoals.kcal>0 ? '#767672':'#111111','Consumidas'],['#EDEDE8','Restantes']]);
   renderHistoryChart();
 }
 
@@ -776,11 +843,45 @@ async function renderHistoryChart(){
 }
 
 // ---------- Notas ----------
+function escHtml(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function loadNotes(tipo){
+  const listEl = document.getElementById(tipo==='perfil' ? 'profileNotesList' : 'dayNotesList');
+  if(!listEl) return;
+  let q = sb.from('notas').select('*').eq('cliente_id', vCliente.id).eq('tipo', tipo).order('created_at', {ascending:false});
+  if(tipo==='dia') q = q.eq('fecha', vDate);
+  const { data, error } = await q;
+  if(error){ listEl.innerHTML = `<p class="error">No se pudieron cargar las notas: ${error.message}</p>`; return; }
+  if(!data || data.length===0){ listEl.innerHTML = '<p class="muted" style="margin:0 0 10px;">Aún no hay notas guardadas.</p>'; return; }
+  listEl.innerHTML = data.map(n=>{
+    const when = new Date(n.created_at).toLocaleString('es-CO',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    return `<div class="note-item"><div><div class="when">${when}</div><div class="txt">${escHtml(n.nota||'')}</div></div><button class="small secondary" onclick="deleteNote('${n.id}','${tipo}')">×</button></div>`;
+  }).join('');
+}
+
 async function saveDayNote(){
-  const text = document.getElementById('dayNote').value;
-  const { data: existing } = await sb.from('notas').select('id').eq('cliente_id', vCliente.id).eq('fecha', vDate).maybeSingle();
-  if(existing){ await sb.from('notas').update({ nota:text }).eq('id', existing.id); }
-  else { await sb.from('notas').insert({ cliente_id: vCliente.id, fecha: vDate, nota:text }); }
+  const ta = document.getElementById('dayNote');
+  const text = ta.value.trim();
+  if(!text) return;
+  const { error } = await sb.from('notas').insert({ cliente_id: vCliente.id, fecha: vDate, nota:text, tipo:'dia' });
+  if(error){ alert('No se pudo guardar la nota: '+error.message); return; }
+  ta.value = '';
+  await loadNotes('dia');
+}
+
+async function saveProfileNote(){
+  const ta = document.getElementById('p_nota_nueva');
+  const text = ta.value.trim();
+  if(!text) return;
+  const { error } = await sb.from('notas').insert({ cliente_id: vCliente.id, fecha: todayStr(), nota:text, tipo:'perfil' });
+  if(error){ alert('No se pudo guardar la nota: '+error.message); return; }
+  ta.value = '';
+  await loadNotes('perfil');
+}
+
+async function deleteNote(id, tipo){
+  await sb.from('notas').delete().eq('id', id);
+  await loadNotes(tipo);
 }
 
 // ---------- Peso ----------
@@ -853,12 +954,13 @@ function renderWeightChart(){
 
 window.login=login; window.signup=signup; window.logout=logout; window.addCliente=addCliente;
 window.switchEntrenadorTab=switchEntrenadorTab; window.filterAlimentos=filterAlimentos;
-window.openFoodModal=openFoodModal; window.closeFoodModal=closeFoodModal; window.saveFood=saveFood; window.onFoodCatChange=onFoodCatChange;
+window.openEditFood=openEditFood; window.openFoodModal=openFoodModal; window.closeFoodModal=closeFoodModal; window.saveFood=saveFood; window.onFoodCatChange=onFoodCatChange;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
+window.saveProfileNote=saveProfileNote; window.deleteNote=deleteNote;
 window.addWeight=addWeight; window.deleteWeight=deleteWeight; window.downloadMenu=downloadMenu;
 
 init();
