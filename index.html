@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -657,6 +656,7 @@ let vDate = null;          // fecha activa del registro (YYYY-MM-DD)
 let vEntries = [];         // entradas del registro del día activo
 let vGoals = null;         // meta vigente
 let vRutinaDias = [];      // días de la rutina del cliente actual, con sus ejercicios anidados
+let vHoyDia = null;        // día de rutina que el cliente tiene activo hoy
 let vWeights = [];         // pesos del cliente
 let macroChart, kcalChart, historyChart, weightChart;
 
@@ -753,15 +753,114 @@ function renderPerfilTab(){
 
 async function renderEntrenamientoTab(){
   if(vOpts && vOpts.isSelf){
-    document.getElementById('clienteTabContent').innerHTML = `
-      <h2>Entrenamiento</h2>
-      <p class="muted">Tu entrenador está armando esta sección — muy pronto vas a ver aquí tu rutina del día.</p>
-    `;
+    await loadRutina();
+    await renderMiEntrenamiento();
     return;
   }
   if(!ejerciciosCache){ await loadEjercicios(); }
   await loadRutina();
   renderRutinaBuilder();
+}
+
+// ---------- Vista del cliente: día de hoy + Tracked Mode ----------
+async function renderMiEntrenamiento(){
+  const wrap = document.getElementById('clienteTabContent');
+  if(!vRutinaDias.length){
+    wrap.innerHTML = `<h2>Entrenamiento</h2><p class="muted">Tu entrenador aún no te ha asignado una rutina.</p>`;
+    return;
+  }
+  const idx = ((vCliente.entreno_dia_actual || 1) - 1) % vRutinaDias.length;
+  const dia = vRutinaDias[idx];
+  vHoyDia = dia;
+  let html = `<div class="inline" style="align-items:center;"><h2 style="margin:0;">${dia.nombre}</h2><span class="muted">${dia.tipo==='gym' ? 'Entrenamiento' : 'Running'}</span></div>`;
+  html += dia.tipo === 'gym' ? `<div id="miEntrenoExs">Cargando…</div>` : `<div id="miEntrenoRun">Cargando…</div>`;
+  html += `<div class="inline" style="margin-top:18px;">
+      <button class="secondary" onclick="guardarProgresoDia(false)">Guardar progreso</button>
+      <button onclick="guardarProgresoDia(true)">Completar día y avanzar</button>
+    </div>`;
+  wrap.innerHTML = html;
+  if(dia.tipo === 'gym') await renderMiEntrenoExs(dia);
+  else await renderMiEntrenoRun(dia);
+}
+
+async function renderMiEntrenoExs(dia){
+  const today = todayStr();
+  let html = '';
+  for(const re of (dia.ejercicios||[])){
+    const nSeries = re.series || 3;
+    const { data: hist } = await sb.from('registro_entreno').select('*').eq('cliente_id', vCliente.id).eq('ejercicio_id', re.ejercicio_id).order('fecha', { ascending:false }).order('numero_serie');
+    const todayRows = (hist||[]).filter(h=>h.fecha===today);
+    const prevRows = (hist||[]).filter(h=>h.fecha!==today);
+    let lastLabel = 'sin registros previos';
+    if(prevRows.length){
+      const lastFecha = prevRows[0].fecha;
+      const lastSet = prevRows.filter(h=>h.fecha===lastFecha).sort((a,b)=>a.numero_serie-b.numero_serie);
+      lastLabel = lastSet.map(s=>`${s.peso ?? '—'}kg x${s.reps ?? '—'}`).join(', ');
+    }
+    html += `<div class="card" style="margin-bottom:14px;padding:14px;">
+      <strong>${re.ejercicios ? re.ejercicios.nombre : '—'}</strong>
+      <div class="muted">${re.series ?? '—'} series x ${re.reps_objetivo ?? '—'}${re.peso_sugerido ? ' · sugerido '+re.peso_sugerido+'kg' : ''}</div>
+      <div class="muted" style="margin:4px 0 8px;">Última vez: ${lastLabel}</div>
+      <div class="scroll"><table><thead><tr><th>Serie</th><th>Peso (kg)</th><th>Reps</th></tr></thead><tbody>`;
+    for(let n=1;n<=nSeries;n++){
+      const row = todayRows.find(t=>t.numero_serie===n);
+      html += `<tr><td>${n}</td>
+        <td><input type="number" step="0.5" class="te-peso" data-ej="${re.ejercicio_id}" data-serie="${n}" value="${row ? (row.peso ?? '') : ''}"></td>
+        <td><input type="number" class="te-reps" data-ej="${re.ejercicio_id}" data-serie="${n}" value="${row ? (row.reps ?? '') : ''}"></td></tr>`;
+    }
+    html += `</tbody></table></div></div>`;
+  }
+  document.getElementById('miEntrenoExs').innerHTML = html || '<p class="muted">Este día no tiene ejercicios asignados todavía.</p>';
+}
+
+async function renderMiEntrenoRun(dia){
+  const today = todayStr();
+  const { data } = await sb.from('registro_running').select('*').eq('cliente_id', vCliente.id).eq('fecha', today).eq('dia_id', dia.id).maybeSingle();
+  document.getElementById('miEntrenoRun').innerHTML = `
+    <div class="grid2">
+      <div class="field"><label>Distancia (km)</label><input type="number" step="0.01" id="rr_distancia" value="${data?.distancia_km ?? ''}"></div>
+      <div class="field"><label>Tiempo (min)</label><input type="number" step="0.1" id="rr_tiempo" value="${data?.tiempo_min ?? ''}"></div>
+      <div class="field"><label>Pace (min/km)</label><input type="text" id="rr_pace" placeholder="Ej. 5:30" value="${data?.pace ?? ''}"></div>
+      <div class="field"><label>FC promedio</label><input type="number" id="rr_fc" value="${data?.fc_promedio ?? ''}"></div>
+      <div class="field"><label>Cadencia</label><input type="number" id="rr_cadencia" value="${data?.cadencia ?? ''}"></div>
+    </div>
+    <div class="field" style="margin-top:8px;"><label>Notas</label><input type="text" id="rr_notas" value="${data?.notas ?? ''}"></div>
+  `;
+}
+
+async function guardarProgresoDia(avanzar){
+  const dia = vHoyDia;
+  const today = todayStr();
+  if(dia.tipo === 'gym'){
+    const rows = [];
+    document.querySelectorAll('.te-peso').forEach(inp=>{
+      const ej = inp.dataset.ej, serie = parseInt(inp.dataset.serie);
+      const peso = inp.value === '' ? null : parseFloat(inp.value);
+      const repsInp = document.querySelector(`.te-reps[data-ej="${ej}"][data-serie="${serie}"]`);
+      const reps = (repsInp && repsInp.value !== '') ? parseInt(repsInp.value) : null;
+      if(peso !== null || reps !== null) rows.push({ cliente_id: vCliente.id, fecha: today, dia_id: dia.id, ejercicio_id: ej, numero_serie: serie, peso, reps });
+    });
+    await sb.from('registro_entreno').delete().eq('cliente_id', vCliente.id).eq('fecha', today).eq('dia_id', dia.id);
+    if(rows.length) await sb.from('registro_entreno').insert(rows);
+  } else {
+    const num = (id)=>{ const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
+    const payload = {
+      cliente_id: vCliente.id, fecha: today, dia_id: dia.id,
+      distancia_km: num('rr_distancia'), tiempo_min: num('rr_tiempo'),
+      pace: document.getElementById('rr_pace').value.trim() || null,
+      fc_promedio: num('rr_fc'), cadencia: num('rr_cadencia'),
+      notas: document.getElementById('rr_notas').value.trim() || null,
+    };
+    await sb.from('registro_running').delete().eq('cliente_id', vCliente.id).eq('fecha', today).eq('dia_id', dia.id);
+    await sb.from('registro_running').insert(payload);
+  }
+  if(avanzar){
+    const idx = ((vCliente.entreno_dia_actual || 1) - 1) % vRutinaDias.length;
+    const nextValue = ((idx + 1) % vRutinaDias.length) + 1;
+    await sb.from('clientes').update({ entreno_dia_actual: nextValue }).eq('id', vCliente.id);
+    vCliente.entreno_dia_actual = nextValue;
+  }
+  await renderMiEntrenamiento();
 }
 
 async function loadRutina(){
@@ -854,7 +953,11 @@ function openRutinaEjercicioModal(diaId, id){
   editingReDiaId = diaId; editingReId = id || null;
   document.getElementById('reModalErr').textContent = '';
   const sel = document.getElementById('re_ejercicio');
-  sel.innerHTML = (ejerciciosCache||[]).slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(e=>`<option value="${e.id}">${e.nombre} (${e.grupo_muscular})</option>`).join('');
+  const byGrupo = {};
+  (ejerciciosCache||[]).forEach(e=>{ (byGrupo[e.grupo_muscular]=byGrupo[e.grupo_muscular]||[]).push(e); });
+  sel.innerHTML = GRUPOS_MUSCULARES.filter(g=>byGrupo[g]).map(g=>
+    `<optgroup label="${g}">${byGrupo[g].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('')}</optgroup>`
+  ).join('');
   const dia = vRutinaDias.find(x=>x.id===diaId);
   if(id){
     const re = (dia.ejercicios||[]).find(x=>x.id===id);
@@ -1351,6 +1454,7 @@ window.openEditFood=openEditFood; window.openFoodModal=openFoodModal; window.clo
 window.openEditExercise=openEditExercise; window.openExerciseModal=openExerciseModal; window.closeExerciseModal=closeExerciseModal; window.saveExercise=saveExercise; window.confirmDeleteExercise=confirmDeleteExercise; window.filterEjercicios=filterEjercicios;
 window.openDiaModal=openDiaModal; window.closeDiaModal=closeDiaModal; window.saveDia=saveDia; window.confirmDeleteDia=confirmDeleteDia;
 window.openRutinaEjercicioModal=openRutinaEjercicioModal; window.closeRutinaEjercicioModal=closeRutinaEjercicioModal; window.saveRutinaEjercicio=saveRutinaEjercicio; window.confirmDeleteRutinaEjercicio=confirmDeleteRutinaEjercicio;
+window.guardarProgresoDia=guardarProgresoDia;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
