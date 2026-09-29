@@ -67,6 +67,14 @@
   @media (max-width:640px){
     .chart-wrap-wide{position:relative;height:220px;margin:14px 0;}
     .chart-wrap-wide + h2{margin-top:14px;}
+    input[type=number]{-moz-appearance:textfield;}
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+    .num-stepper{display:flex;align-items:stretch;width:100%;}
+    .num-stepper input[type=number]{flex:1;min-width:0;width:auto;text-align:center;border-radius:0;}
+    .num-stepper .num-stepper-btn{flex:0 0 32px;width:32px;padding:0;background:none;color:var(--ink);border:1px solid var(--ink);font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;}
+    .num-stepper .num-stepper-btn:first-child{border-radius:4px 0 0 4px;border-right:none;}
+    .num-stepper .num-stepper-btn:last-child{border-radius:0 4px 4px 0;border-left:none;}
   }
   .chart-legend{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;font-size:11px;color:var(--muted);margin-top:10px;min-height:34px;}
   .chart-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
@@ -124,6 +132,37 @@ const SUPABASE_ANON_KEY = "sb_publishable_8b8P9eK5ZKgy4QFjF9KV0w_1LF37Jb-";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const app = document.getElementById('app');
+
+function wrapNumberStepper(input){
+  if(input.dataset.stepperWrapped) return;
+  input.dataset.stepperWrapped = '1';
+  const wrap = document.createElement('div');
+  wrap.className = 'num-stepper';
+  input.parentNode.insertBefore(wrap, input);
+  const minus = document.createElement('button');
+  minus.type = 'button'; minus.className = 'num-stepper-btn'; minus.textContent = '−';
+  const plus = document.createElement('button');
+  plus.type = 'button'; plus.className = 'num-stepper-btn'; plus.textContent = '+';
+  const step = parseFloat(input.getAttribute('step')) || 1;
+  const decimals = (input.getAttribute('step') || '').includes('.') ? input.getAttribute('step').split('.')[1].length : 0;
+  function bump(dir){
+    let v = parseFloat(input.value);
+    if(isNaN(v)) v = 0;
+    v = Math.round((v + dir*step) * Math.pow(10,decimals)) / Math.pow(10,decimals);
+    if(input.min !== '' && v < parseFloat(input.min)) v = parseFloat(input.min);
+    if(input.max !== '' && v > parseFloat(input.max)) v = parseFloat(input.max);
+    input.value = v;
+  }
+  minus.onclick = ()=>bump(-1);
+  plus.onclick = ()=>bump(1);
+  wrap.appendChild(minus); wrap.appendChild(input); wrap.appendChild(plus);
+}
+function initNumberSteppers(){
+  if(!window.matchMedia('(max-width:640px)').matches) return;
+  document.querySelectorAll('input[type=number]:not([data-stepper-wrapped])').forEach(wrapNumberStepper);
+}
+new MutationObserver(()=>initNumberSteppers()).observe(app, {childList:true, subtree:true});
+initNumberSteppers();
 let currentUserId = null;
 let currentRole = null;
 let alimentosCache = null;
@@ -293,7 +332,7 @@ function renderFoodRows(list){
   Object.keys(byCat).forEach(cat=>{
     html += `<tr><td colspan="7" class="cat-header">${cat}</td></tr>`;
     byCat[cat].forEach(f=>{
-      html += `<tr><td>${f.nombre}${f.unidad_label ? `<br><span class="muted">1 ${f.unidad_label} ≈ ${f.unidad_gramos} g</span>` : ''}</td><td>${f.kcal}</td><td>${f.proteina}</td><td>${f.carbohidratos}</td><td>${f.grasa}</td><td>${f.fibra}</td><td style="white-space:nowrap;"><button class="small secondary" title="Editar" onclick="openEditFood('${f.id}')">✎</button> <button class="small secondary" title="Eliminar" onclick="confirmDeleteFood('${f.id}')">🗑</button></td></tr>`;
+      html += `<tr><td>${f.nombre}${f.unidad_label ? `<br><span class="muted">1 ${f.unidad_label} ≈ ${f.unidad_gramos} g</span>` : ''}</td><td>${f.kcal}</td><td>${f.proteina}</td><td>${f.carbohidratos}</td><td>${f.grasa}</td><td>${f.fibra}</td><td style="white-space:nowrap;"><button class="small secondary" title="Editar" onclick="openEditFood('${f.id}')">✎</button> <button class="small secondary" title="Eliminar" onclick="confirmDeleteFood('${f.id}')">✕</button></td></tr>`;
     });
   });
   document.getElementById('foodTableBody').innerHTML = html || '<tr><td colspan="7" class="muted">Sin resultados.</td></tr>';
