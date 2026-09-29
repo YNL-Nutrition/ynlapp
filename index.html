@@ -20,6 +20,9 @@
   }
   .brand-row{display:flex;align-items:center;justify-content:center;margin:0 auto 28px;max-width:1400px;}
   .brand-row img{height:128px;max-width:80%;width:auto;display:block;}
+  .loading-state{padding:60px 0;text-align:center;}
+  .loading-state img{height:44px;width:auto;display:block;margin:0 auto 12px;animation:loadingPulse 1.4s ease-in-out infinite;}
+  @keyframes loadingPulse{0%,100%{opacity:0.2;}50%{opacity:0.6;}}
   h1{font-size:21px;font-weight:500;margin:0;letter-spacing:-0.01em;}
   h2{font-size:13px;font-weight:600;margin:18px 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;}
   input,button,select,textarea{
@@ -658,6 +661,10 @@ let vGoals = null;         // meta vigente
 let vRutinaDias = [];      // días de la rutina del cliente actual, con sus ejercicios anidados
 let vHoyDia = null;        // día de rutina que el cliente tiene activo hoy
 let vHistoryPrecomputed = null; // kcal por día ya calculados, para pintar el historial sin volver a consultar
+
+function loadingHtml(){
+  return `<div class="loading-state"><img src="logo.png" alt=""><p class="muted">Cargando…</p></div>`;
+}
 let vWeights = [];         // pesos del cliente
 let macroChart, kcalChart, historyChart, weightChart;
 
@@ -753,6 +760,7 @@ function renderPerfilTab(){
 }
 
 async function renderEntrenamientoTab(){
+  document.getElementById('clienteTabContent').innerHTML = loadingHtml();
   if(vOpts && vOpts.isSelf){
     await loadRutina();
     await renderMiEntrenamiento();
@@ -1011,7 +1019,7 @@ async function confirmDeleteRutinaEjercicio(id){
 
 async function renderNutricionTab(){
   const cliente = vCliente;
-  document.getElementById('clienteTabContent').innerHTML = `<p class="muted" style="padding:60px 0;text-align:center;">Cargando…</p>`;
+  document.getElementById('clienteTabContent').innerHTML = loadingHtml();
 
   const base = new Date(vDate+'T00:00:00');
   const days = [];
