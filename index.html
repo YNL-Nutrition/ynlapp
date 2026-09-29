@@ -126,6 +126,29 @@
   </div>
 </div>
 
+<!-- ===================== MODAL: AGREGAR EJERCICIO ===================== -->
+<div class="modal-bg" id="exModalBg">
+  <div class="modal">
+    <h1 id="exModalTitle" style="font-size:16px;">Agregar ejercicio</h1>
+    <label>Grupo muscular</label>
+    <select id="ex_grupo">
+      <option>Deltoides</option><option>Pecho</option><option>Espalda</option><option>Bíceps</option><option>Tríceps</option>
+      <option>Abs</option><option>Glúteo</option><option>Cuádriceps</option><option>Isquios</option><option>Pantorrilla</option>
+    </select>
+    <label>Nombre del ejercicio</label>
+    <input type="text" id="ex_nombre" placeholder="Ej. Press banca con barra">
+    <label>Video (opcional)</label>
+    <input type="text" id="ex_video" placeholder="Link de YouTube u otro">
+    <label>Notas (opcional)</label>
+    <input type="text" id="ex_notas" placeholder="Indicaciones de técnica, etc.">
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeExerciseModal()">Cancelar</button>
+      <button id="exModalSaveBtn" onclick="saveExercise()">Guardar</button>
+    </div>
+    <p class="error" id="exModalErr"></p>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL = "https://thfnhfeysvomoiwdguvs.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_8b8P9eK5ZKgy4QFjF9KV0w_1LF37Jb-";
@@ -169,6 +192,9 @@ initNumberSteppers();
 let currentUserId = null;
 let currentRole = null;
 let alimentosCache = null;
+let ejerciciosCache = null;
+let editingExerciseId = null;
+const GRUPOS_MUSCULARES = ['Deltoides','Pecho','Espalda','Bíceps','Tríceps','Abs','Glúteo','Cuádriceps','Isquios','Pantorrilla'];
 
 // ---------- Auth ----------
 async function init(){
@@ -248,6 +274,7 @@ async function showEntrenadorDashboard(userId){
       <div class="tabs">
         <button class="tab-btn active" id="tabBtnAsesorados" onclick="switchEntrenadorTab('asesorados','${userId}')">Asesorados</button>
         <button class="tab-btn" id="tabBtnAlimentos" onclick="switchEntrenadorTab('alimentos','${userId}')">Base de alimentos</button>
+        <button class="tab-btn" id="tabBtnEjercicios" onclick="switchEntrenadorTab('ejercicios','${userId}')">Base de ejercicios</button>
       </div>
       <div id="entrenadorTabContent">Cargando…</div>
     </div>
@@ -258,7 +285,10 @@ async function showEntrenadorDashboard(userId){
 async function switchEntrenadorTab(tab, userId){
   document.getElementById('tabBtnAsesorados').classList.toggle('active', tab==='asesorados');
   document.getElementById('tabBtnAlimentos').classList.toggle('active', tab==='alimentos');
-  if(tab === 'asesorados'){ await renderAsesoradosTab(userId); } else { await renderAlimentosTab(); }
+  document.getElementById('tabBtnEjercicios').classList.toggle('active', tab==='ejercicios');
+  if(tab === 'asesorados'){ await renderAsesoradosTab(userId); }
+  else if(tab === 'alimentos'){ await renderAlimentosTab(); }
+  else { await renderEjerciciosTab(); }
 }
 
 async function renderAsesoradosTab(userId){
@@ -458,6 +488,123 @@ async function saveFood(){
   if(error){ err.textContent = error.message; return; }
   closeFoodModal();
   await loadAlimentos();
+}
+
+// ---------- Base de ejercicios (panel entrenador) ----------
+async function renderEjerciciosTab(){
+  const content = document.getElementById('entrenadorTabContent');
+  content.innerHTML = `
+    <div class="inline" style="margin-bottom:10px;">
+      <input type="text" id="exSearch" placeholder="Buscar ejercicio..." style="flex:1;min-width:180px;" oninput="filterEjercicios()">
+      <select id="exGrupoFilter" onchange="filterEjercicios()"><option value="">Todos los grupos</option>${GRUPOS_MUSCULARES.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
+      <button onclick="openExerciseModal()">+ Agregar ejercicio</button>
+    </div>
+    <div class="scroll">
+      <table><thead><tr><th>Ejercicio</th><th>Video</th><th></th></tr></thead>
+      <tbody id="exTableBody"><tr><td colspan="3" class="muted">Cargando…</td></tr></tbody></table>
+    </div>
+  `;
+  await loadEjercicios();
+}
+
+async function loadEjercicios(){
+  const { data, error } = await sb.from('ejercicios').select('*').order('grupo_muscular').order('nombre');
+  if(error){
+    const tb = document.getElementById('exTableBody');
+    if(tb) tb.innerHTML = `<tr><td colspan="3" class="muted">Error cargando: ${error.message}</td></tr>`;
+    return;
+  }
+  ejerciciosCache = data;
+  if(document.getElementById('exTableBody')) renderEjercicioRows(ejerciciosCache);
+}
+
+function renderEjercicioRows(list){
+  const byGrupo = {};
+  list.forEach(e=>{ (byGrupo[e.grupo_muscular]=byGrupo[e.grupo_muscular]||[]).push(e); });
+  let html = '';
+  Object.keys(byGrupo).forEach(g=>{
+    html += `<tr><td colspan="3" class="cat-header">${g}</td></tr>`;
+    byGrupo[g].forEach(e=>{
+      html += `<tr><td>${e.nombre}</td><td>${e.video_url ? `<a href="${e.video_url}" target="_blank">Ver</a>` : '—'}</td><td style="white-space:nowrap;"><button class="small secondary" title="Editar" onclick="openEditExercise('${e.id}')">✎</button> <button class="small secondary" title="Eliminar" onclick="confirmDeleteExercise('${e.id}')">✕</button></td></tr>`;
+    });
+  });
+  document.getElementById('exTableBody').innerHTML = html || '<tr><td colspan="3" class="muted">Sin resultados.</td></tr>';
+}
+
+function filterEjercicios(){
+  if(!ejerciciosCache) return;
+  const q = document.getElementById('exSearch').value.trim().toLowerCase();
+  const g = document.getElementById('exGrupoFilter').value;
+  const filtered = ejerciciosCache.filter(e=>{
+    const matchQ = !q || e.nombre.toLowerCase().includes(q);
+    const matchG = !g || e.grupo_muscular === g;
+    return matchQ && matchG;
+  });
+  renderEjercicioRows(filtered);
+}
+
+async function confirmDeleteExercise(id){
+  const e = (ejerciciosCache||[]).find(x=>x.id===id);
+  if(!e) return;
+  if(!confirm(`¿Eliminar "${e.nombre}" de la base de ejercicios? Esta acción no se puede deshacer.`)) return;
+  const { error } = await sb.from('ejercicios').delete().eq('id', id);
+  if(error){ alert('No se pudo eliminar: ' + error.message); return; }
+  await loadEjercicios();
+}
+
+function openExerciseModal(){
+  editingExerciseId = null;
+  document.getElementById('exModalTitle').textContent = 'Agregar ejercicio';
+  document.getElementById('exModalSaveBtn').textContent = 'Guardar';
+  document.getElementById('exModalErr').textContent = '';
+  ['ex_nombre','ex_video','ex_notas'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('ex_grupo').value = GRUPOS_MUSCULARES[0];
+  document.getElementById('exModalBg').classList.add('show');
+}
+
+function openEditExercise(id){
+  const e = (ejerciciosCache||[]).find(x=>x.id===id);
+  if(!e) return;
+  editingExerciseId = id;
+  document.getElementById('exModalTitle').textContent = 'Editar ejercicio';
+  document.getElementById('exModalSaveBtn').textContent = 'Guardar cambios';
+  document.getElementById('exModalErr').textContent = '';
+  document.getElementById('ex_grupo').value = e.grupo_muscular;
+  document.getElementById('ex_nombre').value = e.nombre || '';
+  document.getElementById('ex_video').value = e.video_url || '';
+  document.getElementById('ex_notas').value = e.notas || '';
+  document.getElementById('exModalBg').classList.add('show');
+}
+
+function closeExerciseModal(){ document.getElementById('exModalBg').classList.remove('show'); }
+
+async function saveExercise(){
+  const grupo_muscular = document.getElementById('ex_grupo').value;
+  const nombre = document.getElementById('ex_nombre').value.trim();
+  const video_url = document.getElementById('ex_video').value.trim();
+  const notas = document.getElementById('ex_notas').value.trim();
+  const err = document.getElementById('exModalErr');
+  if(!nombre){ err.textContent = 'Escribe el nombre del ejercicio.'; return; }
+  if(editingExerciseId){
+    const { data: upd, error: updErr } = await sb.from('ejercicios').update({
+      grupo_muscular, nombre, video_url: video_url || null, notas: notas || null,
+    }).eq('id', editingExerciseId).select();
+    if(updErr){ err.textContent = updErr.message; return; }
+    if(!upd || upd.length===0){ err.textContent = 'No se pudo actualizar (permisos).'; return; }
+    editingExerciseId = null;
+    closeExerciseModal();
+    await loadEjercicios();
+    return;
+  }
+  let id = slugify(nombre);
+  const existing = (ejerciciosCache||[]).find(e=>e.id===id);
+  if(existing) id = id + '_' + Date.now();
+  const { error } = await sb.from('ejercicios').insert({
+    id, grupo_muscular, nombre, video_url: video_url || null, notas: notas || null,
+  });
+  if(error){ err.textContent = error.message; return; }
+  closeExerciseModal();
+  await loadEjercicios();
 }
 
 // =====================================================================
@@ -1012,6 +1159,7 @@ function renderWeightChart(){
 window.login=login; window.signup=signup; window.logout=logout; window.addCliente=addCliente;
 window.switchEntrenadorTab=switchEntrenadorTab; window.filterAlimentos=filterAlimentos;
 window.openEditFood=openEditFood; window.openFoodModal=openFoodModal; window.closeFoodModal=closeFoodModal; window.saveFood=saveFood; window.onFoodCatChange=onFoodCatChange;
+window.openEditExercise=openEditExercise; window.openExerciseModal=openExerciseModal; window.closeExerciseModal=closeExerciseModal; window.saveExercise=saveExercise; window.confirmDeleteExercise=confirmDeleteExercise; window.filterEjercicios=filterEjercicios;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
