@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -132,8 +133,8 @@
     <h1 id="exModalTitle" style="font-size:16px;">Agregar ejercicio</h1>
     <label>Grupo muscular</label>
     <select id="ex_grupo">
-      <option>Deltoides</option><option>Pecho</option><option>Espalda</option><option>Bíceps</option><option>Tríceps</option>
-      <option>Abs</option><option>Glúteo</option><option>Cuádriceps</option><option>Isquios</option><option>Pantorrilla</option>
+      <option>Abs</option><option>Bíceps</option><option>Cuádriceps</option><option>Deltoides</option><option>Espalda</option>
+      <option>Glúteo</option><option>Isquios</option><option>Pantorrilla</option><option>Pecho</option><option>Tríceps</option>
     </select>
     <label>Nombre del ejercicio</label>
     <input type="text" id="ex_nombre" placeholder="Ej. Press banca con barra">
@@ -146,6 +147,46 @@
       <button id="exModalSaveBtn" onclick="saveExercise()">Guardar</button>
     </div>
     <p class="error" id="exModalErr"></p>
+  </div>
+</div>
+
+<!-- ===================== MODAL: DÍA DE RUTINA ===================== -->
+<div class="modal-bg" id="diaModalBg">
+  <div class="modal">
+    <h1 id="diaModalTitle" style="font-size:16px;">Agregar día</h1>
+    <label>Nombre del día</label>
+    <input type="text" id="d_nombre" placeholder="Ej. Día 1 — Pecho y tríceps">
+    <div class="grid2" style="max-width:none;">
+      <div><label>Tipo</label><select id="d_tipo"><option value="gym">Gym</option><option value="running">Running</option></select></div>
+      <div><label>Orden</label><input type="number" id="d_orden" min="1"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeDiaModal()">Cancelar</button>
+      <button id="diaModalSaveBtn" onclick="saveDia()">Guardar</button>
+    </div>
+    <p class="error" id="diaModalErr"></p>
+  </div>
+</div>
+
+<!-- ===================== MODAL: EJERCICIO DENTRO DEL DÍA ===================== -->
+<div class="modal-bg" id="reModalBg">
+  <div class="modal">
+    <h1 id="reModalTitle" style="font-size:16px;">Agregar ejercicio al día</h1>
+    <label>Ejercicio</label>
+    <select id="re_ejercicio"></select>
+    <div class="grid2" style="max-width:none;">
+      <div><label>Series</label><input type="number" id="re_series"></div>
+      <div><label>Reps objetivo</label><input type="text" id="re_reps" placeholder="Ej. 8-10"></div>
+      <div><label>Peso sugerido</label><input type="number" step="0.5" id="re_peso"></div>
+      <div><label>Orden</label><input type="number" id="re_orden" min="1"></div>
+    </div>
+    <label>Notas</label>
+    <input type="text" id="re_notas">
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeRutinaEjercicioModal()">Cancelar</button>
+      <button id="reModalSaveBtn" onclick="saveRutinaEjercicio()">Guardar</button>
+    </div>
+    <p class="error" id="reModalErr"></p>
   </div>
 </div>
 
@@ -194,7 +235,7 @@ let currentRole = null;
 let alimentosCache = null;
 let ejerciciosCache = null;
 let editingExerciseId = null;
-const GRUPOS_MUSCULARES = ['Deltoides','Pecho','Espalda','Bíceps','Tríceps','Abs','Glúteo','Cuádriceps','Isquios','Pantorrilla'];
+const GRUPOS_MUSCULARES = ['Abs','Bíceps','Cuádriceps','Deltoides','Espalda','Glúteo','Isquios','Pantorrilla','Pecho','Tríceps'];
 
 // ---------- Auth ----------
 async function init(){
@@ -615,6 +656,7 @@ let vOpts = null;          // {isSelf, entrenadorUserId}
 let vDate = null;          // fecha activa del registro (YYYY-MM-DD)
 let vEntries = [];         // entradas del registro del día activo
 let vGoals = null;         // meta vigente
+let vRutinaDias = [];      // días de la rutina del cliente actual, con sus ejercicios anidados
 let vWeights = [];         // pesos del cliente
 let macroChart, kcalChart, historyChart, weightChart;
 
@@ -664,7 +706,7 @@ async function switchClienteTab(tab){
   document.getElementById('ctabEntrenamiento').classList.toggle('active', tab==='entrenamiento');
   if(tab==='perfil') renderPerfilTab();
   else if(tab==='nutricion') await renderNutricionTab();
-  else renderEntrenamientoTab();
+  else await renderEntrenamientoTab();
 }
 
 function renderPerfilTab(){
@@ -709,11 +751,158 @@ function renderPerfilTab(){
   loadNotes('perfil');
 }
 
-function renderEntrenamientoTab(){
-  document.getElementById('clienteTabContent').innerHTML = `
-    <h2>Entrenamiento</h2>
-    <p class="muted">Esta sección está en construcción — próximamente vamos a construir aquí el seguimiento de entrenamiento.</p>
-  `;
+async function renderEntrenamientoTab(){
+  if(vOpts && vOpts.isSelf){
+    document.getElementById('clienteTabContent').innerHTML = `
+      <h2>Entrenamiento</h2>
+      <p class="muted">Tu entrenador está armando esta sección — muy pronto vas a ver aquí tu rutina del día.</p>
+    `;
+    return;
+  }
+  if(!ejerciciosCache){ await loadEjercicios(); }
+  await loadRutina();
+  renderRutinaBuilder();
+}
+
+async function loadRutina(){
+  const { data: dias } = await sb.from('rutina_dias').select('*').eq('cliente_id', vCliente.id).order('orden');
+  vRutinaDias = dias || [];
+  for(const d of vRutinaDias){
+    const { data: ejs } = await sb.from('rutina_ejercicios').select('*, ejercicios(nombre, grupo_muscular)').eq('dia_id', d.id).order('orden');
+    d.ejercicios = ejs || [];
+  }
+}
+
+function renderRutinaBuilder(){
+  let html = `<div class="inline" style="margin-bottom:10px;"><h2 style="margin:0;">Rutina de ${vCliente.nombre}</h2><button onclick="openDiaModal()">+ Agregar día</button></div>`;
+  if(!vRutinaDias.length){
+    html += `<p class="muted">Aún no has armado la rutina de este cliente.</p>`;
+  }
+  vRutinaDias.forEach(d=>{
+    html += `<div class="card" style="margin-bottom:14px;padding:14px;">
+      <div class="inline" style="align-items:center;">
+        <div><strong>${d.orden}. ${d.nombre}</strong> <span class="muted">(${d.tipo==='gym'?'Gym':'Running'})</span></div>
+        <div style="display:flex;gap:6px;">
+          <button class="small secondary" title="Editar" onclick="openDiaModal('${d.id}')">✎</button>
+          <button class="small secondary" title="Eliminar" onclick="confirmDeleteDia('${d.id}')">✕</button>
+        </div>
+      </div>`;
+    if(d.tipo === 'gym'){
+      html += `<div class="scroll" style="margin-top:10px;"><table><thead><tr><th>Ejercicio</th><th>Series</th><th>Reps</th><th>Peso sug.</th><th>Notas</th><th></th></tr></thead><tbody>`;
+      (d.ejercicios||[]).forEach(re=>{
+        html += `<tr><td>${re.ejercicios ? re.ejercicios.nombre : '—'}</td><td>${re.series ?? '—'}</td><td>${re.reps_objetivo ?? '—'}</td><td>${re.peso_sugerido ?? '—'}</td><td>${re.notas ?? '—'}</td>
+          <td style="white-space:nowrap;"><button class="small secondary" title="Editar" onclick="openRutinaEjercicioModal('${d.id}','${re.id}')">✎</button> <button class="small secondary" title="Eliminar" onclick="confirmDeleteRutinaEjercicio('${re.id}')">✕</button></td></tr>`;
+      });
+      html += `</tbody></table></div>
+      <div style="margin-top:8px;"><button class="small secondary" onclick="openRutinaEjercicioModal('${d.id}')">+ Agregar ejercicio</button></div>`;
+    } else {
+      html += `<p class="muted" style="margin-top:10px;">Día de running — el cliente registra distancia, tiempo, pace, FC y cadencia directamente.</p>`;
+    }
+    html += `</div>`;
+  });
+  document.getElementById('clienteTabContent').innerHTML = html;
+}
+
+let editingDiaId = null;
+function openDiaModal(id){
+  editingDiaId = id || null;
+  document.getElementById('diaModalErr').textContent = '';
+  if(id){
+    const d = vRutinaDias.find(x=>x.id===id);
+    document.getElementById('diaModalTitle').textContent = 'Editar día';
+    document.getElementById('diaModalSaveBtn').textContent = 'Guardar cambios';
+    document.getElementById('d_nombre').value = d.nombre;
+    document.getElementById('d_tipo').value = d.tipo;
+    document.getElementById('d_orden').value = d.orden;
+  } else {
+    document.getElementById('diaModalTitle').textContent = 'Agregar día';
+    document.getElementById('diaModalSaveBtn').textContent = 'Guardar';
+    document.getElementById('d_nombre').value = '';
+    document.getElementById('d_tipo').value = 'gym';
+    document.getElementById('d_orden').value = vRutinaDias.length ? Math.max(...vRutinaDias.map(x=>x.orden))+1 : 1;
+  }
+  document.getElementById('diaModalBg').classList.add('show');
+}
+function closeDiaModal(){ document.getElementById('diaModalBg').classList.remove('show'); }
+async function saveDia(){
+  const nombre = document.getElementById('d_nombre').value.trim();
+  const tipo = document.getElementById('d_tipo').value;
+  const orden = parseInt(document.getElementById('d_orden').value) || 1;
+  const err = document.getElementById('diaModalErr');
+  if(!nombre){ err.textContent = 'Escribe el nombre del día.'; return; }
+  const payload = { nombre, tipo, orden };
+  const { error } = editingDiaId
+    ? await sb.from('rutina_dias').update(payload).eq('id', editingDiaId)
+    : await sb.from('rutina_dias').insert({ cliente_id: vCliente.id, ...payload });
+  if(error){ err.textContent = error.message; return; }
+  closeDiaModal();
+  await loadRutina();
+  renderRutinaBuilder();
+}
+async function confirmDeleteDia(id){
+  const d = vRutinaDias.find(x=>x.id===id);
+  if(!d) return;
+  if(!confirm(`¿Eliminar el día "${d.nombre}" y todos sus ejercicios asignados?`)) return;
+  const { error } = await sb.from('rutina_dias').delete().eq('id', id);
+  if(error){ alert('No se pudo eliminar: ' + error.message); return; }
+  await loadRutina();
+  renderRutinaBuilder();
+}
+
+let editingReId = null, editingReDiaId = null;
+function openRutinaEjercicioModal(diaId, id){
+  editingReDiaId = diaId; editingReId = id || null;
+  document.getElementById('reModalErr').textContent = '';
+  const sel = document.getElementById('re_ejercicio');
+  sel.innerHTML = (ejerciciosCache||[]).slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(e=>`<option value="${e.id}">${e.nombre} (${e.grupo_muscular})</option>`).join('');
+  const dia = vRutinaDias.find(x=>x.id===diaId);
+  if(id){
+    const re = (dia.ejercicios||[]).find(x=>x.id===id);
+    document.getElementById('reModalTitle').textContent = 'Editar ejercicio';
+    document.getElementById('reModalSaveBtn').textContent = 'Guardar cambios';
+    sel.value = re.ejercicio_id;
+    document.getElementById('re_series').value = re.series ?? '';
+    document.getElementById('re_reps').value = re.reps_objetivo ?? '';
+    document.getElementById('re_peso').value = re.peso_sugerido ?? '';
+    document.getElementById('re_orden').value = re.orden;
+    document.getElementById('re_notas').value = re.notas ?? '';
+  } else {
+    document.getElementById('reModalTitle').textContent = 'Agregar ejercicio al día';
+    document.getElementById('reModalSaveBtn').textContent = 'Guardar';
+    document.getElementById('re_series').value = '';
+    document.getElementById('re_reps').value = '';
+    document.getElementById('re_peso').value = '';
+    document.getElementById('re_orden').value = (dia.ejercicios && dia.ejercicios.length) ? Math.max(...dia.ejercicios.map(x=>x.orden))+1 : 1;
+    document.getElementById('re_notas').value = '';
+  }
+  document.getElementById('reModalBg').classList.add('show');
+}
+function closeRutinaEjercicioModal(){ document.getElementById('reModalBg').classList.remove('show'); }
+async function saveRutinaEjercicio(){
+  const ejercicio_id = document.getElementById('re_ejercicio').value;
+  const series = parseInt(document.getElementById('re_series').value) || null;
+  const reps_objetivo = document.getElementById('re_reps').value.trim() || null;
+  const pesoVal = parseFloat(document.getElementById('re_peso').value.replace(',','.'));
+  const peso_sugerido = isNaN(pesoVal) ? null : pesoVal;
+  const orden = parseInt(document.getElementById('re_orden').value) || 1;
+  const notas = document.getElementById('re_notas').value.trim() || null;
+  const err = document.getElementById('reModalErr');
+  if(!ejercicio_id){ err.textContent = 'Selecciona un ejercicio.'; return; }
+  const payload = { ejercicio_id, series, reps_objetivo, peso_sugerido, orden, notas };
+  const { error } = editingReId
+    ? await sb.from('rutina_ejercicios').update(payload).eq('id', editingReId)
+    : await sb.from('rutina_ejercicios').insert({ dia_id: editingReDiaId, ...payload });
+  if(error){ err.textContent = error.message; return; }
+  closeRutinaEjercicioModal();
+  await loadRutina();
+  renderRutinaBuilder();
+}
+async function confirmDeleteRutinaEjercicio(id){
+  if(!confirm('¿Quitar este ejercicio del día?')) return;
+  const { error } = await sb.from('rutina_ejercicios').delete().eq('id', id);
+  if(error){ alert('No se pudo eliminar: ' + error.message); return; }
+  await loadRutina();
+  renderRutinaBuilder();
 }
 
 async function renderNutricionTab(){
@@ -1160,6 +1349,8 @@ window.login=login; window.signup=signup; window.logout=logout; window.addClient
 window.switchEntrenadorTab=switchEntrenadorTab; window.filterAlimentos=filterAlimentos;
 window.openEditFood=openEditFood; window.openFoodModal=openFoodModal; window.closeFoodModal=closeFoodModal; window.saveFood=saveFood; window.onFoodCatChange=onFoodCatChange;
 window.openEditExercise=openEditExercise; window.openExerciseModal=openExerciseModal; window.closeExerciseModal=closeExerciseModal; window.saveExercise=saveExercise; window.confirmDeleteExercise=confirmDeleteExercise; window.filterEjercicios=filterEjercicios;
+window.openDiaModal=openDiaModal; window.closeDiaModal=closeDiaModal; window.saveDia=saveDia; window.confirmDeleteDia=confirmDeleteDia;
+window.openRutinaEjercicioModal=openRutinaEjercicioModal; window.closeRutinaEjercicioModal=closeRutinaEjercicioModal; window.saveRutinaEjercicio=saveRutinaEjercicio; window.confirmDeleteRutinaEjercicio=confirmDeleteRutinaEjercicio;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
