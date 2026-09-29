@@ -27,7 +27,7 @@
   .te-tabs{display:flex;gap:6px;margin-bottom:16px;}
   .te-tab{flex:1;text-align:center;padding:9px 0;border:1px solid var(--border);border-radius:5px;font-size:13px;cursor:pointer;background:#fff;color:var(--ink);}
   .te-tab.active{background:var(--ink);color:#fff;border-color:var(--ink);}
-  .te-tab.te-add{flex:0 0 40px;color:var(--muted);}
+  .te-tab.te-add,.te-tab.te-remove{flex:0 0 40px;color:var(--muted);}
   .te-row{display:flex;gap:10px;margin-bottom:12px;}
   .te-row .field{flex:1;}
   .te-row input{text-align:center;}
@@ -822,7 +822,8 @@ async function buildMiEntrenoExsHtml(dia){
       series.push({
         peso: row ? row.peso : null,
         reps: row ? row.reps : null,
-        prevLabel: prevForN ? `${prevForN.peso ?? '—'}kg × ${prevForN.reps ?? '—'}` : 'sin registro previo'
+        prevLabel: prevForN ? `${prevForN.peso ?? '—'}kg × ${prevForN.reps ?? '—'}` : 'sin registro previo',
+        saved: !!row
       });
     }
     miEntrenoState[re.ejercicio_id] = { re, activeIndex: 0, series };
@@ -834,8 +835,9 @@ async function buildMiEntrenoExsHtml(dia){
 function renderEjercicioWidgetHtml(ej){
   const st = miEntrenoState[ej];
   const re = st.re;
-  const tabsHtml = st.series.map((s,i)=>`<div class="te-tab${i===st.activeIndex?' active':''}" onclick="selectSerie('${ej}',${i})">Serie ${i+1}</div>`).join('')
-    + `<div class="te-tab te-add" onclick="addSerie('${ej}')">+</div>`;
+  const tabsHtml = st.series.map((s,i)=>`<div class="te-tab${i===st.activeIndex?' active':''}" onclick="selectSerie('${ej}',${i})">Serie ${i+1}${s.saved?' ✓':''}</div>`).join('')
+    + `<div class="te-tab te-add" onclick="addSerie('${ej}')">+</div>`
+    + (st.series.length>1 ? `<div class="te-tab te-remove" onclick="removeSerie('${ej}')">✕</div>` : '');
   const cur = st.series[st.activeIndex];
   return `<div class="card" id="teCard_${ej}" style="margin-bottom:14px;padding:14px;">
     <strong style="display:block;text-align:center;">${re.ejercicios ? re.ejercicios.nombre : '—'}</strong>
@@ -846,11 +848,28 @@ function renderEjercicioWidgetHtml(ej){
       <div class="te-x">×</div>
       <div class="field"><label>Reps</label><input type="number" id="teReps_${ej}" value="${cur.reps ?? ''}"></div>
     </div>
-    <div class="te-refs">
+    <div class="te-refs" style="margin-bottom:12px;">
       <div><span class="k">Última vez</span><span class="v">${cur.prevLabel}</span></div>
-      ${st.series.length>1 ? `<button class="small secondary" onclick="removeSerie('${ej}')">Quitar esta serie</button>` : ''}
     </div>
+    <button style="width:100%;" onclick="guardarSerie('${ej}')">✓ Guardar serie</button>
   </div>`;
+}
+
+async function guardarSerie(ej){
+  captureSerieInputs(ej);
+  const st = miEntrenoState[ej];
+  const idx = st.activeIndex;
+  const s = st.series[idx];
+  const today = todayStr();
+  const dia = vHoyDia;
+  await sb.from('registro_entreno').delete().eq('cliente_id', vCliente.id).eq('fecha', today).eq('dia_id', dia.id).eq('ejercicio_id', ej).eq('numero_serie', idx+1);
+  if(s.peso !== null || s.reps !== null){
+    await sb.from('registro_entreno').insert({ cliente_id: vCliente.id, fecha: today, dia_id: dia.id, ejercicio_id: ej, numero_serie: idx+1, peso: s.peso, reps: s.reps });
+    s.saved = true;
+  } else {
+    s.saved = false;
+  }
+  refreshEjercicioWidget(ej);
 }
 
 function captureSerieInputs(ej){
@@ -1578,7 +1597,7 @@ window.openEditExercise=openEditExercise; window.openExerciseModal=openExerciseM
 window.openDiaModal=openDiaModal; window.closeDiaModal=closeDiaModal; window.saveDia=saveDia; window.confirmDeleteDia=confirmDeleteDia;
 window.openRutinaEjercicioModal=openRutinaEjercicioModal; window.closeRutinaEjercicioModal=closeRutinaEjercicioModal; window.saveRutinaEjercicio=saveRutinaEjercicio; window.confirmDeleteRutinaEjercicio=confirmDeleteRutinaEjercicio;
 window.guardarProgresoDia=guardarProgresoDia;
-window.selectSerie=selectSerie; window.addSerie=addSerie; window.removeSerie=removeSerie;
+window.selectSerie=selectSerie; window.addSerie=addSerie; window.removeSerie=removeSerie; window.guardarSerie=guardarSerie;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
