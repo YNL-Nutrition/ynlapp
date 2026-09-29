@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -70,11 +69,12 @@
     input[type=number]{-moz-appearance:textfield;}
     input[type=number]::-webkit-inner-spin-button,
     input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
-    .num-stepper{display:flex;align-items:stretch;width:100%;}
-    .num-stepper input[type=number]{flex:1;min-width:0;width:auto;text-align:center;border-radius:0;}
-    .num-stepper .num-stepper-btn{flex:0 0 32px;width:32px;padding:0;background:none;color:var(--ink);border:1px solid var(--ink);font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;}
-    .num-stepper .num-stepper-btn:first-child{border-radius:4px 0 0 4px;border-right:none;}
-    .num-stepper .num-stepper-btn:last-child{border-radius:0 4px 4px 0;border-left:none;}
+    .num-stepper{position:relative;width:100%;}
+    .num-stepper input[type=number]{width:100%;padding-right:24px;}
+    .num-stepper .num-stepper-arrows{position:absolute;top:1px;right:1px;bottom:1px;width:20px;display:flex;flex-direction:column;}
+    .num-stepper .num-stepper-btn{flex:1;min-height:0;padding:0;background:var(--card);color:var(--muted);border:none;border-left:1px solid var(--border);font-size:8px;line-height:1;display:flex;align-items:center;justify-content:center;}
+    .num-stepper .num-stepper-btn:first-child{border-bottom:1px solid var(--border);border-radius:0 3px 0 0;}
+    .num-stepper .num-stepper-btn:last-child{border-radius:0 0 3px 0;}
   }
   .chart-legend{display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:center;font-size:11px;color:var(--muted);margin-top:10px;min-height:34px;}
   .chart-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
@@ -139,10 +139,13 @@ function wrapNumberStepper(input){
   const wrap = document.createElement('div');
   wrap.className = 'num-stepper';
   input.parentNode.insertBefore(wrap, input);
-  const minus = document.createElement('button');
-  minus.type = 'button'; minus.className = 'num-stepper-btn'; minus.textContent = '−';
-  const plus = document.createElement('button');
-  plus.type = 'button'; plus.className = 'num-stepper-btn'; plus.textContent = '+';
+  wrap.appendChild(input);
+  const arrows = document.createElement('div');
+  arrows.className = 'num-stepper-arrows';
+  const up = document.createElement('button');
+  up.type = 'button'; up.className = 'num-stepper-btn'; up.textContent = '▲';
+  const down = document.createElement('button');
+  down.type = 'button'; down.className = 'num-stepper-btn'; down.textContent = '▼';
   const step = parseFloat(input.getAttribute('step')) || 1;
   const decimals = (input.getAttribute('step') || '').includes('.') ? input.getAttribute('step').split('.')[1].length : 0;
   function bump(dir){
@@ -153,9 +156,9 @@ function wrapNumberStepper(input){
     if(input.max !== '' && v > parseFloat(input.max)) v = parseFloat(input.max);
     input.value = v;
   }
-  minus.onclick = ()=>bump(-1);
-  plus.onclick = ()=>bump(1);
-  wrap.appendChild(minus); wrap.appendChild(input); wrap.appendChild(plus);
+  up.onclick = ()=>bump(1);
+  down.onclick = ()=>bump(-1);
+  arrows.appendChild(up); arrows.appendChild(down); wrap.appendChild(arrows);
 }
 function initNumberSteppers(){
   if(!window.matchMedia('(max-width:640px)').matches) return;
