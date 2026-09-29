@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -21,7 +22,7 @@
   .brand-row{display:flex;align-items:center;justify-content:center;margin:0 auto 28px;max-width:1400px;}
   .brand-row img{height:128px;max-width:80%;width:auto;display:block;}
   .loading-state{padding:60px 0;text-align:center;}
-  .loading-state img{height:44px;width:auto;display:block;margin:0 auto 12px;animation:loadingPulse 1.4s ease-in-out infinite;}
+  .loading-state img{height:44px;width:auto;display:block;margin:0 auto;animation:loadingPulse 1.4s ease-in-out infinite;}
   @keyframes loadingPulse{0%,100%{opacity:0.2;}50%{opacity:0.6;}}
   h1{font-size:21px;font-weight:500;margin:0;letter-spacing:-0.01em;}
   h2{font-size:13px;font-weight:600;margin:18px 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;}
@@ -663,7 +664,7 @@ let vHoyDia = null;        // día de rutina que el cliente tiene activo hoy
 let vHistoryPrecomputed = null; // kcal por día ya calculados, para pintar el historial sin volver a consultar
 
 function loadingHtml(){
-  return `<div class="loading-state"><img src="logo.png" alt=""><p class="muted">Cargando…</p></div>`;
+  return `<div class="loading-state"><img src="logo.png" alt=""></div>`;
 }
 let vWeights = [];         // pesos del cliente
 let macroChart, kcalChart, historyChart, weightChart;
@@ -781,25 +782,27 @@ async function renderMiEntrenamiento(){
   const idx = ((vCliente.entreno_dia_actual || 1) - 1) % vRutinaDias.length;
   const dia = vRutinaDias[idx];
   vHoyDia = dia;
-  let html = `<div class="inline" style="align-items:center;"><h2 style="margin:0;">${dia.nombre}</h2><span class="muted">${dia.tipo==='gym' ? 'Entrenamiento' : 'Running'}</span></div>`;
-  html += dia.tipo === 'gym' ? `<div id="miEntrenoExs">Cargando…</div>` : `<div id="miEntrenoRun">Cargando…</div>`;
-  html += `<div class="inline" style="margin-top:18px;">
+  const bodyHtml = dia.tipo === 'gym' ? await buildMiEntrenoExsHtml(dia) : await buildMiEntrenoRunHtml(dia);
+  wrap.innerHTML = `<div class="inline" style="align-items:center;"><h2 style="margin:0;">${dia.nombre}</h2><span class="muted">${dia.tipo==='gym' ? 'Entrenamiento' : 'Running'}</span></div>
+    ${bodyHtml}
+    <div class="inline" style="margin-top:18px;">
       <button class="secondary" onclick="guardarProgresoDia(false)">Guardar progreso</button>
       <button onclick="guardarProgresoDia(true)">Completar día y avanzar</button>
     </div>`;
-  wrap.innerHTML = html;
-  if(dia.tipo === 'gym') await renderMiEntrenoExs(dia);
-  else await renderMiEntrenoRun(dia);
 }
 
-async function renderMiEntrenoExs(dia){
+async function buildMiEntrenoExsHtml(dia){
   const today = todayStr();
-  let html = '';
-  for(const re of (dia.ejercicios||[])){
+  const ejs = dia.ejercicios || [];
+  const histResults = await Promise.all(ejs.map(re=>
+    sb.from('registro_entreno').select('*').eq('cliente_id', vCliente.id).eq('ejercicio_id', re.ejercicio_id).order('fecha', { ascending:false }).order('numero_serie')
+  ));
+  let html = '<div id="miEntrenoExs">';
+  ejs.forEach((re, i)=>{
+    const hist = histResults[i].data || [];
     const nSeries = re.series || 3;
-    const { data: hist } = await sb.from('registro_entreno').select('*').eq('cliente_id', vCliente.id).eq('ejercicio_id', re.ejercicio_id).order('fecha', { ascending:false }).order('numero_serie');
-    const todayRows = (hist||[]).filter(h=>h.fecha===today);
-    const prevRows = (hist||[]).filter(h=>h.fecha!==today);
+    const todayRows = hist.filter(h=>h.fecha===today);
+    const prevRows = hist.filter(h=>h.fecha!==today);
     let lastLabel = 'sin registros previos';
     if(prevRows.length){
       const lastFecha = prevRows[0].fecha;
@@ -818,14 +821,16 @@ async function renderMiEntrenoExs(dia){
         <td><input type="number" class="te-reps" data-ej="${re.ejercicio_id}" data-serie="${n}" value="${row ? (row.reps ?? '') : ''}"></td></tr>`;
     }
     html += `</tbody></table></div></div>`;
-  }
-  document.getElementById('miEntrenoExs').innerHTML = html || '<p class="muted">Este día no tiene ejercicios asignados todavía.</p>';
+  });
+  if(!ejs.length) html += '<p class="muted">Este día no tiene ejercicios asignados todavía.</p>';
+  html += '</div>';
+  return html;
 }
 
-async function renderMiEntrenoRun(dia){
+async function buildMiEntrenoRunHtml(dia){
   const today = todayStr();
   const { data } = await sb.from('registro_running').select('*').eq('cliente_id', vCliente.id).eq('fecha', today).eq('dia_id', dia.id).maybeSingle();
-  document.getElementById('miEntrenoRun').innerHTML = `
+  return `<div id="miEntrenoRun">
     <div class="grid2">
       <div class="field"><label>Distancia (km)</label><input type="number" step="0.01" id="rr_distancia" value="${data?.distancia_km ?? ''}"></div>
       <div class="field"><label>Tiempo (min)</label><input type="number" step="0.1" id="rr_tiempo" value="${data?.tiempo_min ?? ''}"></div>
@@ -834,7 +839,7 @@ async function renderMiEntrenoRun(dia){
       <div class="field"><label>Cadencia</label><input type="number" id="rr_cadencia" value="${data?.cadencia ?? ''}"></div>
     </div>
     <div class="field" style="margin-top:8px;"><label>Notas</label><input type="text" id="rr_notas" value="${data?.notas ?? ''}"></div>
-  `;
+  </div>`;
 }
 
 async function guardarProgresoDia(avanzar){
