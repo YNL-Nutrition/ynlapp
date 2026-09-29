@@ -24,6 +24,17 @@
   .loading-state{padding:60px 0;text-align:center;}
   .loading-state img{height:44px;width:auto;display:block;margin:0 auto;animation:loadingPulse 1.4s ease-in-out infinite;}
   @keyframes loadingPulse{0%,100%{opacity:0.2;}50%{opacity:0.6;}}
+  .te-tabs{display:flex;gap:6px;margin-bottom:16px;}
+  .te-tab{flex:1;text-align:center;padding:9px 0;border:1px solid var(--border);border-radius:5px;font-size:13px;cursor:pointer;background:#fff;color:var(--ink);}
+  .te-tab.active{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .te-tab.te-add{flex:0 0 40px;color:var(--muted);}
+  .te-row{display:flex;gap:10px;margin-bottom:12px;}
+  .te-row .field{flex:1;}
+  .te-row input{text-align:center;}
+  .te-x{align-self:center;margin-top:18px;color:var(--muted);font-size:13px;}
+  .te-refs{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;gap:10px;}
+  .te-refs .k{display:block;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:2px;}
+  .te-refs .v{font-size:13px;}
   h1{font-size:21px;font-weight:500;margin:0;letter-spacing:-0.01em;}
   h2{font-size:13px;font-weight:600;margin:18px 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;}
   input,button,select,textarea{
@@ -661,6 +672,7 @@ let vEntries = [];         // entradas del registro del día activo
 let vGoals = null;         // meta vigente
 let vRutinaDias = [];      // días de la rutina del cliente actual, con sus ejercicios anidados
 let vHoyDia = null;        // día de rutina que el cliente tiene activo hoy
+let miEntrenoState = {};   // { [ejercicio_id]: { re, activeIndex, series:[{peso,reps,prevLabel}] } }
 let vHistoryPrecomputed = null; // kcal por día ya calculados, para pintar el historial sin volver a consultar
 
 function loadingHtml(){
@@ -797,34 +809,83 @@ async function buildMiEntrenoExsHtml(dia){
   const histResults = await Promise.all(ejs.map(re=>
     sb.from('registro_entreno').select('*').eq('cliente_id', vCliente.id).eq('ejercicio_id', re.ejercicio_id).order('fecha', { ascending:false }).order('numero_serie')
   ));
-  let html = '<div id="miEntrenoExs">';
+  miEntrenoState = {};
   ejs.forEach((re, i)=>{
     const hist = histResults[i].data || [];
-    const nSeries = re.series || 3;
     const todayRows = hist.filter(h=>h.fecha===today);
     const prevRows = hist.filter(h=>h.fecha!==today);
-    let lastLabel = 'sin registros previos';
-    if(prevRows.length){
-      const lastFecha = prevRows[0].fecha;
-      const lastSet = prevRows.filter(h=>h.fecha===lastFecha).sort((a,b)=>a.numero_serie-b.numero_serie);
-      lastLabel = lastSet.map(s=>`${s.peso ?? '—'}kg x${s.reps ?? '—'}`).join(', ');
-    }
-    html += `<div class="card" style="margin-bottom:14px;padding:14px;">
-      <strong>${re.ejercicios ? re.ejercicios.nombre : '—'}</strong>
-      <div class="muted">${re.series ?? '—'} series x ${re.reps_objetivo ?? '—'}${re.peso_sugerido ? ' · sugerido '+re.peso_sugerido+'kg' : ''}</div>
-      <div class="muted" style="margin:4px 0 8px;">Última vez: ${lastLabel}</div>
-      <div class="scroll"><table><thead><tr><th>Serie</th><th>Peso (kg)</th><th>Reps</th></tr></thead><tbody>`;
-    for(let n=1;n<=nSeries;n++){
+    const nSeries = Math.max(re.series || 3, todayRows.length || 0, 1);
+    const series = [];
+    for(let n=1; n<=nSeries; n++){
       const row = todayRows.find(t=>t.numero_serie===n);
-      html += `<tr><td>${n}</td>
-        <td><input type="number" step="0.5" class="te-peso" data-ej="${re.ejercicio_id}" data-serie="${n}" value="${row ? (row.peso ?? '') : ''}"></td>
-        <td><input type="number" class="te-reps" data-ej="${re.ejercicio_id}" data-serie="${n}" value="${row ? (row.reps ?? '') : ''}"></td></tr>`;
+      const prevForN = prevRows.filter(h=>h.numero_serie===n).sort((a,b)=> b.fecha.localeCompare(a.fecha))[0];
+      series.push({
+        peso: row ? row.peso : null,
+        reps: row ? row.reps : null,
+        prevLabel: prevForN ? `${prevForN.peso ?? '—'}kg × ${prevForN.reps ?? '—'}` : 'sin registro previo'
+      });
     }
-    html += `</tbody></table></div></div>`;
+    miEntrenoState[re.ejercicio_id] = { re, activeIndex: 0, series };
   });
-  if(!ejs.length) html += '<p class="muted">Este día no tiene ejercicios asignados todavía.</p>';
-  html += '</div>';
-  return html;
+  if(!ejs.length) return '<div id="miEntrenoExs"><p class="muted">Este día no tiene ejercicios asignados todavía.</p></div>';
+  return '<div id="miEntrenoExs">' + ejs.map(re=>renderEjercicioWidgetHtml(re.ejercicio_id)).join('') + '</div>';
+}
+
+function renderEjercicioWidgetHtml(ej){
+  const st = miEntrenoState[ej];
+  const re = st.re;
+  const tabsHtml = st.series.map((s,i)=>`<div class="te-tab${i===st.activeIndex?' active':''}" onclick="selectSerie('${ej}',${i})">Serie ${i+1}</div>`).join('')
+    + `<div class="te-tab te-add" onclick="addSerie('${ej}')">+</div>`;
+  const cur = st.series[st.activeIndex];
+  return `<div class="card" id="teCard_${ej}" style="margin-bottom:14px;padding:14px;">
+    <strong style="display:block;text-align:center;">${re.ejercicios ? re.ejercicios.nombre : '—'}</strong>
+    ${re.ejercicios && re.ejercicios.grupo_muscular ? `<div class="muted" style="text-align:center;margin-bottom:14px;">${re.ejercicios.grupo_muscular}</div>` : '<div style="margin-bottom:14px;"></div>'}
+    <div class="te-tabs">${tabsHtml}</div>
+    <div class="te-row">
+      <div class="field"><label>Peso (kg)</label><input type="number" step="0.5" id="tePeso_${ej}" value="${cur.peso ?? ''}"></div>
+      <div class="te-x">×</div>
+      <div class="field"><label>Reps</label><input type="number" id="teReps_${ej}" value="${cur.reps ?? ''}"></div>
+    </div>
+    <div class="te-refs">
+      <div><span class="k">Última vez</span><span class="v">${cur.prevLabel}</span></div>
+      ${st.series.length>1 ? `<button class="small secondary" onclick="removeSerie('${ej}')">Quitar esta serie</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function captureSerieInputs(ej){
+  const st = miEntrenoState[ej];
+  const pesoInp = document.getElementById('tePeso_'+ej);
+  const repsInp = document.getElementById('teReps_'+ej);
+  if(!pesoInp || !repsInp) return;
+  const cur = st.series[st.activeIndex];
+  cur.peso = pesoInp.value === '' ? null : parseFloat(pesoInp.value);
+  cur.reps = repsInp.value === '' ? null : parseInt(repsInp.value);
+}
+
+function refreshEjercicioWidget(ej){
+  document.getElementById('teCard_'+ej).outerHTML = renderEjercicioWidgetHtml(ej);
+}
+
+function selectSerie(ej, idx){
+  captureSerieInputs(ej);
+  miEntrenoState[ej].activeIndex = idx;
+  refreshEjercicioWidget(ej);
+}
+
+function addSerie(ej){
+  captureSerieInputs(ej);
+  miEntrenoState[ej].series.push({ peso:null, reps:null, prevLabel:'sin registro previo' });
+  miEntrenoState[ej].activeIndex = miEntrenoState[ej].series.length - 1;
+  refreshEjercicioWidget(ej);
+}
+
+function removeSerie(ej){
+  const st = miEntrenoState[ej];
+  if(st.series.length <= 1) return;
+  st.series.splice(st.activeIndex, 1);
+  st.activeIndex = Math.max(0, st.activeIndex - 1);
+  refreshEjercicioWidget(ej);
 }
 
 async function buildMiEntrenoRunHtml(dia){
@@ -846,13 +907,14 @@ async function guardarProgresoDia(avanzar){
   const dia = vHoyDia;
   const today = todayStr();
   if(dia.tipo === 'gym'){
+    Object.keys(miEntrenoState).forEach(ej=>captureSerieInputs(ej));
     const rows = [];
-    document.querySelectorAll('.te-peso').forEach(inp=>{
-      const ej = inp.dataset.ej, serie = parseInt(inp.dataset.serie);
-      const peso = inp.value === '' ? null : parseFloat(inp.value);
-      const repsInp = document.querySelector(`.te-reps[data-ej="${ej}"][data-serie="${serie}"]`);
-      const reps = (repsInp && repsInp.value !== '') ? parseInt(repsInp.value) : null;
-      if(peso !== null || reps !== null) rows.push({ cliente_id: vCliente.id, fecha: today, dia_id: dia.id, ejercicio_id: ej, numero_serie: serie, peso, reps });
+    Object.entries(miEntrenoState).forEach(([ej, st])=>{
+      st.series.forEach((s, i)=>{
+        if(s.peso !== null || s.reps !== null){
+          rows.push({ cliente_id: vCliente.id, fecha: today, dia_id: dia.id, ejercicio_id: ej, numero_serie: i+1, peso: s.peso, reps: s.reps });
+        }
+      });
     });
     await sb.from('registro_entreno').delete().eq('cliente_id', vCliente.id).eq('fecha', today).eq('dia_id', dia.id);
     if(rows.length) await sb.from('registro_entreno').insert(rows);
@@ -1516,6 +1578,7 @@ window.openEditExercise=openEditExercise; window.openExerciseModal=openExerciseM
 window.openDiaModal=openDiaModal; window.closeDiaModal=closeDiaModal; window.saveDia=saveDia; window.confirmDeleteDia=confirmDeleteDia;
 window.openRutinaEjercicioModal=openRutinaEjercicioModal; window.closeRutinaEjercicioModal=closeRutinaEjercicioModal; window.saveRutinaEjercicio=saveRutinaEjercicio; window.confirmDeleteRutinaEjercicio=confirmDeleteRutinaEjercicio;
 window.guardarProgresoDia=guardarProgresoDia;
+window.selectSerie=selectSerie; window.addSerie=addSerie; window.removeSerie=removeSerie;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
