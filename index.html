@@ -24,10 +24,11 @@
   .loading-state{padding:60px 0;text-align:center;}
   .loading-state img{height:44px;width:auto;display:block;margin:0 auto;animation:loadingPulse 1.4s ease-in-out infinite;}
   @keyframes loadingPulse{0%,100%{opacity:0.2;}50%{opacity:0.6;}}
-  .te-tabs{display:flex;gap:6px;margin-bottom:16px;}
-  .te-tab{flex:1;text-align:center;padding:9px 0;border:1px solid var(--border);border-radius:5px;font-size:13px;cursor:pointer;background:#fff;color:var(--ink);}
+  .te-tabs{display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;}
+  .te-tab{flex:0 0 64px;text-align:center;padding:9px 0;border:1px solid var(--border);border-radius:5px;font-size:13px;cursor:pointer;background:#fff;color:var(--ink);}
   .te-tab.active{background:var(--ink);color:#fff;border-color:var(--ink);}
   .te-tab.te-add,.te-tab.te-remove{flex:0 0 40px;color:var(--muted);}
+  .te-save.saved{background:none;color:var(--ink);border:1px solid var(--ink);}
   .te-row{display:flex;gap:10px;margin-bottom:12px;}
   .te-row .field{flex:1;}
   .te-row input{text-align:center;}
@@ -823,7 +824,9 @@ async function buildMiEntrenoExsHtml(dia){
         peso: row ? row.peso : null,
         reps: row ? row.reps : null,
         prevLabel: prevForN ? `${prevForN.peso ?? '—'}kg × ${prevForN.reps ?? '—'}` : 'sin registro previo',
-        saved: !!row
+        saved: !!row,
+        savedPeso: row ? row.peso : undefined,
+        savedReps: row ? row.reps : undefined
       });
     }
     miEntrenoState[re.ejercicio_id] = { re, activeIndex: 0, series };
@@ -851,7 +854,7 @@ function renderEjercicioWidgetHtml(ej){
     <div class="te-refs" style="margin-bottom:12px;">
       <div><span class="k">Última vez</span><span class="v">${cur.prevLabel}</span></div>
     </div>
-    <button style="width:100%;" onclick="guardarSerie('${ej}')">✓</button>
+    <button class="te-save${cur.saved ? ' saved' : ''}" style="width:100%;" onclick="guardarSerie('${ej}')">${cur.saved ? 'Guardado ✓' : '✓'}</button>
   </div>`;
 }
 
@@ -866,9 +869,11 @@ async function guardarSerie(ej){
   if(s.peso !== null || s.reps !== null){
     await sb.from('registro_entreno').insert({ cliente_id: vCliente.id, fecha: today, dia_id: dia.id, ejercicio_id: ej, numero_serie: idx+1, peso: s.peso, reps: s.reps });
     s.saved = true;
+    s.savedPeso = s.peso; s.savedReps = s.reps;
   } else {
     s.saved = false;
   }
+  if(idx + 1 < st.series.length) st.activeIndex = idx + 1;
   refreshEjercicioWidget(ej);
 }
 
@@ -880,6 +885,7 @@ function captureSerieInputs(ej){
   const cur = st.series[st.activeIndex];
   cur.peso = pesoInp.value === '' ? null : parseFloat(pesoInp.value);
   cur.reps = repsInp.value === '' ? null : parseInt(repsInp.value);
+  if(cur.saved && (cur.peso !== cur.savedPeso || cur.reps !== cur.savedReps)) cur.saved = false;
 }
 
 function refreshEjercicioWidget(ej){
