@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -708,25 +709,56 @@ async function renderClienteDetail(clienteId, opts){
 
   if(!alimentosCache){ await loadAlimentos(); }
 
+  if(opts.isSelf){
+    renderClienteHome();
+  } else {
+    await renderClienteTabsScreen('nutricion');
+  }
+}
+
+function renderClienteHome(){
+  const cliente = vCliente;
+  app.innerHTML = `
+    <div class="card" style="text-align:center;padding:40px 20px;">
+      <img src="logo.png" alt="YNL" style="height:120px;max-width:75%;margin:0 auto 22px;display:block;">
+      <h1 style="font-weight:500;margin:0 0 28px;">Hola, ${cliente.nombre}</h1>
+      <div class="tabs" style="justify-content:center;">
+        <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('perfil')">Perfil</button>
+        <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('nutricion')">Nutrición</button>
+        <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('entrenamiento')">Entrenamiento</button>
+      </div>
+      <div style="margin-top:32px;"><button class="secondary" onclick="logout()">Cerrar sesión</button></div>
+    </div>
+  `;
+}
+
+async function renderClienteTabsScreen(initialTab){
+  const cliente = vCliente;
+  const opts = vOpts;
   app.innerHTML = `
     <div class="card">
-      <div class="inline" style="align-items:center;">
-        <h1>${opts.isSelf ? 'Hola, '+cliente.nombre : cliente.nombre}</h1>
-        <div style="display:flex;gap:8px;">
-          ${opts.isSelf ? '' : `<button class="secondary" onclick="showEntrenadorDashboard('${opts.entrenadorUserId}')">← Volver a asesorados</button>`}
-          ${opts.isSelf ? '' : `<button class="secondary" onclick="logout()">Cerrar sesión</button>`}
+      ${opts.isSelf ? `
+        <div style="text-align:center;margin-bottom:8px;">
+          <img src="logo.png" alt="Inicio" style="height:38px;cursor:pointer;" onclick="renderClienteHome()">
         </div>
-      </div>
+      ` : `
+        <div class="inline" style="align-items:center;">
+          <h1>${cliente.nombre}</h1>
+          <div style="display:flex;gap:8px;">
+            <button class="secondary" onclick="showEntrenadorDashboard('${opts.entrenadorUserId}')">← Volver a asesorados</button>
+            <button class="secondary" onclick="logout()">Cerrar sesión</button>
+          </div>
+        </div>
+      `}
       <div class="tabs">
         <button class="tab-btn" id="ctabPerfil" onclick="switchClienteTab('perfil')">Perfil</button>
-        <button class="tab-btn active" id="ctabNutricion" onclick="switchClienteTab('nutricion')">Nutrición</button>
+        <button class="tab-btn" id="ctabNutricion" onclick="switchClienteTab('nutricion')">Nutrición</button>
         <button class="tab-btn" id="ctabEntrenamiento" onclick="switchClienteTab('entrenamiento')">Entrenamiento</button>
       </div>
       <div id="clienteTabContent">Cargando…</div>
     </div>
   `;
-
-  await switchClienteTab('nutricion');
+  await switchClienteTab(initialTab);
 }
 
 async function switchClienteTab(tab){
@@ -1613,6 +1645,7 @@ window.guardarProgresoDia=guardarProgresoDia;
 window.selectSerie=selectSerie; window.addSerie=addSerie; window.removeSerie=removeSerie; window.guardarSerie=guardarSerie;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
+window.renderClienteHome=renderClienteHome; window.renderClienteTabsScreen=renderClienteTabsScreen;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
