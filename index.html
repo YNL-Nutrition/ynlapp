@@ -1,14 +1,13 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>YNL — Panel</title>
-<link rel="apple-touch-icon" href="icon.png">
-<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon_dark.png">
+<link rel="icon" type="image/png" href="icon_dark.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -23,6 +22,8 @@
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;
     background:var(--bg);color:var(--ink);margin:0;padding:20px;
+    padding-top:calc(20px + env(safe-area-inset-top, 0px));
+    padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px));
     -webkit-font-smoothing:antialiased;
   }
   .brand-row{display:flex;align-items:center;justify-content:center;margin:0 auto 28px;max-width:1400px;}
