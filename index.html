@@ -727,15 +727,19 @@ function renderClienteHome(){
   setBrandRowVisible(false);
   const cliente = vCliente;
   app.innerHTML = `
-    <div style="min-height:calc(100svh - 40px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 24px;">
-      <img src="logo.png" alt="YNL" style="height:170px;max-width:78%;margin:16px auto 48px;display:block;">
-      <h1 style="font-weight:500;margin:0 0 48px;">Hola, ${cliente.nombre}</h1>
-      <div class="tabs" style="justify-content:center;width:100%;max-width:340px;">
-        <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('perfil')">Perfil</button>
-        <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('nutricion')">Nutrición</button>
-        <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('entrenamiento')">Entrenamiento</button>
+    <div style="min-height:calc(100svh - 40px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;padding:48px 24px;">
+      <div>
+        <img src="logo.png" alt="YNL" style="height:170px;max-width:78%;margin:0 auto 28px;display:block;">
+        <h1 style="font-weight:500;margin:0;">Hola, ${cliente.nombre}</h1>
       </div>
-      <div style="margin-top:28px;"><button class="secondary" onclick="logout()">Cerrar sesión</button></div>
+      <div style="width:100%;max-width:340px;">
+        <div class="tabs" style="justify-content:center;">
+          <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('perfil')">Perfil</button>
+          <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('nutricion')">Nutrición</button>
+          <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('entrenamiento')">Entrenamiento</button>
+        </div>
+        <div style="margin-top:20px;"><button class="secondary" onclick="logout()">Cerrar sesión</button></div>
+      </div>
     </div>
   `;
 }
@@ -745,12 +749,13 @@ async function renderClienteTabsScreen(initialTab){
   const opts = vOpts;
   setBrandRowVisible(!opts.isSelf);
   app.innerHTML = `
-    <div class="card">
-      ${opts.isSelf ? `
-        <div style="text-align:center;margin-bottom:8px;">
-          <img src="logo.png" alt="Inicio" style="height:38px;cursor:pointer;" onclick="renderClienteHome()">
-        </div>
-      ` : `
+    ${opts.isSelf ? `
+      <div style="text-align:center;padding-bottom:18px;margin-bottom:20px;border-bottom:1px solid var(--border);">
+        <img src="logo.png" alt="Inicio" style="height:56px;cursor:pointer;" onclick="renderClienteHome()">
+      </div>
+      <div id="clienteTabContent">Cargando…</div>
+    ` : `
+      <div class="card">
         <div class="inline" style="align-items:center;">
           <h1>${cliente.nombre}</h1>
           <div style="display:flex;gap:8px;">
@@ -758,22 +763,25 @@ async function renderClienteTabsScreen(initialTab){
             <button class="secondary" onclick="logout()">Cerrar sesión</button>
           </div>
         </div>
-      `}
-      <div class="tabs">
-        <button class="tab-btn" id="ctabPerfil" onclick="switchClienteTab('perfil')">Perfil</button>
-        <button class="tab-btn" id="ctabNutricion" onclick="switchClienteTab('nutricion')">Nutrición</button>
-        <button class="tab-btn" id="ctabEntrenamiento" onclick="switchClienteTab('entrenamiento')">Entrenamiento</button>
+        <div class="tabs">
+          <button class="tab-btn" id="ctabPerfil" onclick="switchClienteTab('perfil')">Perfil</button>
+          <button class="tab-btn" id="ctabNutricion" onclick="switchClienteTab('nutricion')">Nutrición</button>
+          <button class="tab-btn" id="ctabEntrenamiento" onclick="switchClienteTab('entrenamiento')">Entrenamiento</button>
+        </div>
+        <div id="clienteTabContent">Cargando…</div>
       </div>
-      <div id="clienteTabContent">Cargando…</div>
-    </div>
+    `}
   `;
   await switchClienteTab(initialTab);
 }
 
 async function switchClienteTab(tab){
-  document.getElementById('ctabPerfil').classList.toggle('active', tab==='perfil');
-  document.getElementById('ctabNutricion').classList.toggle('active', tab==='nutricion');
-  document.getElementById('ctabEntrenamiento').classList.toggle('active', tab==='entrenamiento');
+  const bPerfil = document.getElementById('ctabPerfil');
+  const bNutricion = document.getElementById('ctabNutricion');
+  const bEntrenamiento = document.getElementById('ctabEntrenamiento');
+  if(bPerfil) bPerfil.classList.toggle('active', tab==='perfil');
+  if(bNutricion) bNutricion.classList.toggle('active', tab==='nutricion');
+  if(bEntrenamiento) bEntrenamiento.classList.toggle('active', tab==='entrenamiento');
   if(tab==='perfil') renderPerfilTab();
   else if(tab==='nutricion') await renderNutricionTab();
   else await renderEntrenamientoTab();
