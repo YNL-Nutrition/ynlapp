@@ -266,7 +266,13 @@ async function init(){
   if(session){ showDashboard(session); } else { showLogin(); }
 }
 
+function setBrandRowVisible(visible){
+  const el = document.querySelector('.brand-row');
+  if(el) el.style.display = visible ? '' : 'none';
+}
+
 function showLogin(){
+  setBrandRowVisible(true);
   app.innerHTML = `
     <div class="card narrow">
       <h1 style="margin-bottom:14px;">Iniciar sesión</h1>
@@ -329,6 +335,7 @@ async function showDashboard(session){
 
 // ---------- Panel entrenador: lista de asesorados ----------
 async function showEntrenadorDashboard(userId){
+  setBrandRowVisible(true);
   app.innerHTML = `
     <div class="card">
       <div class="inline">
@@ -717,17 +724,18 @@ async function renderClienteDetail(clienteId, opts){
 }
 
 function renderClienteHome(){
+  setBrandRowVisible(false);
   const cliente = vCliente;
   app.innerHTML = `
-    <div class="card" style="text-align:center;padding:40px 20px;">
-      <img src="logo.png" alt="YNL" style="height:120px;max-width:75%;margin:0 auto 22px;display:block;">
-      <h1 style="font-weight:500;margin:0 0 28px;">Hola, ${cliente.nombre}</h1>
-      <div class="tabs" style="justify-content:center;">
+    <div style="min-height:calc(100svh - 40px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 24px;">
+      <img src="logo.png" alt="YNL" style="height:170px;max-width:78%;margin:16px auto 48px;display:block;">
+      <h1 style="font-weight:500;margin:0 0 48px;">Hola, ${cliente.nombre}</h1>
+      <div class="tabs" style="justify-content:center;width:100%;max-width:340px;">
         <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('perfil')">Perfil</button>
         <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('nutricion')">Nutrición</button>
         <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('entrenamiento')">Entrenamiento</button>
       </div>
-      <div style="margin-top:32px;"><button class="secondary" onclick="logout()">Cerrar sesión</button></div>
+      <div style="margin-top:28px;"><button class="secondary" onclick="logout()">Cerrar sesión</button></div>
     </div>
   `;
 }
@@ -735,6 +743,7 @@ function renderClienteHome(){
 async function renderClienteTabsScreen(initialTab){
   const cliente = vCliente;
   const opts = vOpts;
+  setBrandRowVisible(!opts.isSelf);
   app.innerHTML = `
     <div class="card">
       ${opts.isSelf ? `
