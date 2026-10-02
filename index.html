@@ -728,17 +728,15 @@ function renderClienteHome(){
   const cliente = vCliente;
   app.innerHTML = `
     <div style="min-height:calc(100svh - 40px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;justify-content:space-between;text-align:center;padding:48px 24px;">
-      <div>
-        <img src="logo.png" alt="YNL" style="height:170px;max-width:78%;margin:0 auto 28px;display:block;">
-        <h1 style="font-weight:500;margin:0;">Hola, ${cliente.nombre}</h1>
-      </div>
+      <img src="logo.png" alt="YNL" style="height:170px;width:auto;max-width:78%;display:block;">
+      <h1 style="font-weight:500;margin:0;">Hola, ${cliente.nombre}</h1>
       <div style="width:100%;max-width:340px;">
         <div class="tabs" style="justify-content:center;">
           <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('perfil')">Perfil</button>
           <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('nutricion')">Nutrición</button>
           <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('entrenamiento')">Entrenamiento</button>
         </div>
-        <div style="margin-top:20px;"><button class="secondary" onclick="logout()">Cerrar sesión</button></div>
+        <div style="margin-top:20px;"><button onclick="logout()" style="background:none;border:none;color:var(--muted);text-decoration:underline;font:inherit;font-size:13px;cursor:pointer;padding:0;">Cerrar sesión</button></div>
       </div>
     </div>
   `;
@@ -750,10 +748,12 @@ async function renderClienteTabsScreen(initialTab){
   setBrandRowVisible(!opts.isSelf);
   app.innerHTML = `
     ${opts.isSelf ? `
-      <div style="text-align:center;padding-bottom:18px;margin-bottom:20px;border-bottom:1px solid var(--border);">
-        <img src="logo.png" alt="Inicio" style="height:56px;cursor:pointer;" onclick="renderClienteHome()">
+      <div style="max-width:1200px;width:100%;margin:0 auto;padding:22px;">
+        <div style="text-align:center;padding-bottom:18px;margin-bottom:20px;border-bottom:1px solid var(--border);">
+          <img src="logo.png" alt="Inicio" style="height:56px;width:auto;cursor:pointer;" onclick="renderClienteHome()">
+        </div>
+        <div id="clienteTabContent">Cargando…</div>
       </div>
-      <div id="clienteTabContent">Cargando…</div>
     ` : `
       <div class="card">
         <div class="inline" style="align-items:center;">
@@ -788,6 +788,11 @@ async function switchClienteTab(tab){
 }
 
 function renderPerfilTab(){
+  document.getElementById('clienteTabContent').innerHTML = loadingHtml();
+  setTimeout(renderPerfilTabContent, 0);
+}
+
+function renderPerfilTabContent(){
   const cliente = vCliente;
   document.getElementById('clienteTabContent').innerHTML = `
     <h2>Datos básicos</h2>
