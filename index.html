@@ -29,8 +29,8 @@
   }
   .brand-row{display:flex;align-items:center;justify-content:center;margin:0 auto 28px;max-width:1400px;}
   .brand-row img{height:128px;max-width:80%;width:auto;display:block;}
-  .loading-state{padding:60px 0;text-align:center;}
-  .loading-state img{height:44px;width:auto;display:block;margin:0 auto;animation:loadingPulse 1.4s ease-in-out infinite;}
+  .loading-state{min-height:55vh;display:flex;align-items:center;justify-content:center;}
+  .loading-state img{height:44px;width:auto;display:block;animation:loadingPulse 1.4s ease-in-out infinite;}
   @keyframes loadingPulse{0%,100%{opacity:0.2;}50%{opacity:0.6;}}
   .te-tabs{display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding-bottom:2px;}
   .te-tab{flex:0 0 64px;text-align:center;padding:9px 0;border:1px solid var(--border);border-radius:5px;font-size:13px;cursor:pointer;background:#fff;color:var(--ink);}
@@ -789,7 +789,7 @@ async function switchClienteTab(tab){
 
 function renderPerfilTab(){
   document.getElementById('clienteTabContent').innerHTML = loadingHtml();
-  setTimeout(renderPerfilTabContent, 0);
+  setTimeout(renderPerfilTabContent, 350);
 }
 
 function renderPerfilTabContent(){
