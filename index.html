@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -688,6 +689,8 @@ let vGoals = null;         // meta vigente
 let vRutinaDias = [];      // días de la rutina del cliente actual, con sus ejercicios anidados
 let vHoyDia = null;        // día de rutina que el cliente tiene activo hoy
 let miEntrenoState = {};   // { [ejercicio_id]: { re, activeIndex, series:[{peso,reps,prevLabel}] } }
+let vProgresoEjercicios = {}; // { [ejercicio_id]: { id, nombre, grupo, rows:[{fecha,peso}] } } — solo progreso (solo lectura)
+let progresoPesoChartObj = null, progresoExChartObj = null;
 let vHistoryPrecomputed = null; // kcal por día ya calculados, para pintar el historial sin volver a consultar
 
 function loadingHtml(){
@@ -732,13 +735,14 @@ function renderClienteHome(){
   const cliente = vCliente;
   app.innerHTML = `
     <div style="min-height:calc(100svh - 40px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 24px;">
-      <img src="logo.png" alt="YNL" style="height:150px;width:auto;max-width:78%;display:block;margin-bottom:48px;">
-      <h1 style="font-weight:500;margin:0 0 48px;">Hola, ${cliente.nombre}</h1>
+      <img src="logo.png" alt="YNL" style="height:150px;width:auto;max-width:78%;display:block;margin-bottom:96px;">
+      <h1 style="font-weight:500;margin:0 0 96px;">Hola, ${cliente.nombre}</h1>
       <div style="width:100%;max-width:340px;">
         <div class="tabs" style="justify-content:center;">
           <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('perfil')">Perfil</button>
           <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('nutricion')">Nutrición</button>
           <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('entrenamiento')">Entrenamiento</button>
+          <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('progreso')">Progreso</button>
         </div>
         <div style="margin-top:20px;"><button onclick="logout()" style="background:none;border:none;color:var(--muted);text-decoration:underline;font:inherit;font-size:13px;cursor:pointer;padding:0;">Cerrar sesión</button></div>
       </div>
@@ -771,6 +775,7 @@ async function renderClienteTabsScreen(initialTab){
           <button class="tab-btn" id="ctabPerfil" onclick="switchClienteTab('perfil')">Perfil</button>
           <button class="tab-btn" id="ctabNutricion" onclick="switchClienteTab('nutricion')">Nutrición</button>
           <button class="tab-btn" id="ctabEntrenamiento" onclick="switchClienteTab('entrenamiento')">Entrenamiento</button>
+          <button class="tab-btn" id="ctabProgreso" onclick="switchClienteTab('progreso')">Progreso</button>
         </div>
         <div id="clienteTabContent">Cargando…</div>
       </div>
@@ -783,12 +788,15 @@ async function switchClienteTab(tab){
   const bPerfil = document.getElementById('ctabPerfil');
   const bNutricion = document.getElementById('ctabNutricion');
   const bEntrenamiento = document.getElementById('ctabEntrenamiento');
+  const bProgreso = document.getElementById('ctabProgreso');
   if(bPerfil) bPerfil.classList.toggle('active', tab==='perfil');
   if(bNutricion) bNutricion.classList.toggle('active', tab==='nutricion');
   if(bEntrenamiento) bEntrenamiento.classList.toggle('active', tab==='entrenamiento');
+  if(bProgreso) bProgreso.classList.toggle('active', tab==='progreso');
   if(tab==='perfil') renderPerfilTab();
   else if(tab==='nutricion') await renderNutricionTab();
-  else await renderEntrenamientoTab();
+  else if(tab==='entrenamiento') await renderEntrenamientoTab();
+  else await renderProgresoTab();
 }
 
 function renderPerfilTab(){
@@ -1654,6 +1662,86 @@ function renderWeightList(){
   } else { note.textContent=''; }
 }
 
+// ---------- Progreso (solo lectura: peso corporal + ejercicios) ----------
+async function renderProgresoTab(){
+  document.getElementById('clienteTabContent').innerHTML = loadingHtml();
+
+  const [[pesosRes, histRes]] = await Promise.all([
+    Promise.all([
+      sb.from('pesos').select('*').eq('cliente_id', vCliente.id).order('fecha'),
+      sb.from('registro_entreno').select('ejercicio_id, fecha, peso, ejercicios(nombre, grupo_muscular)').eq('cliente_id', vCliente.id)
+    ]),
+    minDelay(TAB_LOADING_MIN_MS)
+  ]);
+
+  vWeights = pesosRes.data || [];
+  vProgresoEjercicios = {};
+  (histRes.data || []).forEach(h=>{
+    if(h.peso == null) return;
+    if(!vProgresoEjercicios[h.ejercicio_id]){
+      vProgresoEjercicios[h.ejercicio_id] = { id:h.ejercicio_id, nombre: h.ejercicios ? h.ejercicios.nombre : h.ejercicio_id, grupo: h.ejercicios ? h.ejercicios.grupo_muscular : '', rows:[] };
+    }
+    vProgresoEjercicios[h.ejercicio_id].rows.push(h);
+  });
+
+  const exList = Object.values(vProgresoEjercicios);
+  const gruposConDatos = GRUPOS_MUSCULARES.filter(g=>exList.some(e=>e.grupo===g));
+
+  document.getElementById('clienteTabContent').innerHTML = `
+    <h2>Progreso</h2>
+    <div class="tabs" id="progresoSubTabs">
+      <button class="tab-btn active" style="flex:1;" onclick="switchProgresoSub('peso',this)">Peso corporal</button>
+      <button class="tab-btn" style="flex:1;" onclick="switchProgresoSub('ejercicios',this)">Ejercicios</button>
+    </div>
+    <div id="progresoPeso">
+      <div class="chart-wrap-wide"><canvas id="progresoPesoChart" height="90"></canvas></div>
+    </div>
+    <div id="progresoEjercicios" style="display:none;">
+      ${exList.length ? `
+        <select id="progresoExSelect" onchange="renderProgresoExChart(this.value)">
+          ${gruposConDatos.map(g=>`<optgroup label="${g}">${exList.filter(e=>e.grupo===g).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('')}</optgroup>`).join('')}
+        </select>
+        <div class="chart-wrap-wide"><canvas id="progresoExChart" height="90"></canvas></div>
+      ` : `<p class="muted">Todavía no hay series registradas en ningún ejercicio.</p>`}
+    </div>
+  `;
+
+  renderProgresoPesoChart();
+  if(exList.length) renderProgresoExChart(document.getElementById('progresoExSelect').value);
+}
+
+function switchProgresoSub(which, btn){
+  document.querySelectorAll('#progresoSubTabs .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('progresoPeso').style.display = which==='peso' ? '' : 'none';
+  document.getElementById('progresoEjercicios').style.display = which==='ejercicios' ? '' : 'none';
+}
+
+function renderProgresoPesoChart(){
+  const ctx = document.getElementById('progresoPesoChart');
+  if(!ctx || typeof Chart==='undefined') return;
+  const weekly = computeWeeklyAverages(vWeights);
+  if(progresoPesoChartObj) progresoPesoChartObj.destroy();
+  if(weekly.length===0) return;
+  const isMobile = window.matchMedia('(max-width:640px)').matches;
+  progresoPesoChartObj = new Chart(ctx, { type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:'#111111', backgroundColor:'#111111', tension:0.25, pointRadius:4 }]}, options:{ maintainAspectRatio: !isMobile, plugins:{legend:{display:false}} } });
+}
+
+function renderProgresoExChart(ejercicioId){
+  const ctx = document.getElementById('progresoExChart');
+  if(!ctx || typeof Chart==='undefined') return;
+  const ex = vProgresoEjercicios[ejercicioId];
+  if(progresoExChartObj) progresoExChartObj.destroy();
+  if(!ex) return;
+  const byFecha = {};
+  ex.rows.forEach(r=>{
+    if(!byFecha[r.fecha] || r.peso > byFecha[r.fecha]) byFecha[r.fecha] = r.peso;
+  });
+  const fechas = Object.keys(byFecha).sort();
+  const isMobile = window.matchMedia('(max-width:640px)').matches;
+  progresoExChartObj = new Chart(ctx, { type:'line', data:{ labels: fechas.map(f=> new Date(f+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'})), datasets:[{ label:'Peso máx. (kg)', data: fechas.map(f=>byFecha[f]), borderColor:'#111111', backgroundColor:'#111111', tension:0.25, pointRadius:4 }]}, options:{ maintainAspectRatio: !isMobile, plugins:{legend:{display:false}} } });
+}
+
 function renderWeightChart(){
   const ctx = document.getElementById('weightChart');
   if(!ctx || typeof Chart==='undefined') return;
@@ -1675,6 +1763,7 @@ window.selectSerie=selectSerie; window.addSerie=addSerie; window.removeSerie=rem
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
 window.renderClienteHome=renderClienteHome; window.renderClienteTabsScreen=renderClienteTabsScreen;
+window.switchProgresoSub=switchProgresoSub; window.renderProgresoExChart=renderProgresoExChart;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
