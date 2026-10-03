@@ -111,11 +111,15 @@
 </head>
 <body>
 
-<div class="brand-row">
+<div class="brand-row" style="display:none;">
   <img src="logo.png" alt="YNL">
 </div>
 
-<div id="app">Cargando…</div>
+<div id="app">
+  <div style="position:fixed;inset:0;background:#111;display:flex;align-items:center;justify-content:center;z-index:9999;">
+    <img src="logo.png" alt="" style="height:60px;width:auto;filter:invert(1);animation:loadingPulse 1.4s ease-in-out infinite;">
+  </div>
+</div>
 
 <!-- ===================== MODAL: AGREGAR ALIMENTO ===================== -->
 <div class="modal-bg" id="foodModalBg">
@@ -236,6 +240,7 @@ function wrapNumberStepper(input){
   const step = parseFloat(input.getAttribute('step')) || 1;
   const decimals = (input.getAttribute('step') || '').includes('.') ? input.getAttribute('step').split('.')[1].length : 0;
   function bump(dir){
+    if(input.disabled) return;
     let v = parseFloat(input.value);
     if(isNaN(v)) v = 0;
     v = Math.round((v + dir*step) * Math.pow(10,decimals)) / Math.pow(10,decimals);
@@ -249,7 +254,7 @@ function wrapNumberStepper(input){
 }
 function initNumberSteppers(){
   if(!window.matchMedia('(max-width:640px)').matches) return;
-  document.querySelectorAll('input[type=number]:not([data-stepper-wrapped])').forEach(wrapNumberStepper);
+  document.querySelectorAll('input[type=number]:not([data-stepper-wrapped]):not(:disabled)').forEach(wrapNumberStepper);
 }
 new MutationObserver(()=>initNumberSteppers()).observe(app, {childList:true, subtree:true});
 initNumberSteppers();
