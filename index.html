@@ -869,7 +869,7 @@ async function renderMiEntrenamiento(){
   const dia = vRutinaDias[idx];
   vHoyDia = dia;
   const bodyHtml = dia.tipo === 'gym' ? await buildMiEntrenoExsHtml(dia) : await buildMiEntrenoRunHtml(dia);
-  wrap.innerHTML = `<div class="inline" style="align-items:center;"><h2 style="margin:0;">${dia.nombre}</h2><span class="muted">${dia.tipo==='gym' ? 'Entrenamiento' : 'Running'}</span></div>
+  wrap.innerHTML = `<h2>${dia.nombre}</h2>
     ${bodyHtml}
     <div class="inline" style="margin-top:18px;">
       ${dia.tipo!=='gym' ? `<button class="secondary" onclick="guardarProgresoDia(false)">Guardar progreso</button>` : ''}
@@ -1276,7 +1276,6 @@ async function renderNutricionTab(){
       </div>
       <div id="weightListWrap"></div>
       <p class="muted" id="weightAvgNote"></p>
-      <div class="chart-wrap-wide"><canvas id="weightChart" height="90"></canvas></div>
 
       <h2>Notas del día</h2>
       <div id="dayNotesList" style="max-width:700px;"></div>
