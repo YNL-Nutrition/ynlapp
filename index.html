@@ -866,15 +866,32 @@ async function renderMiEntrenamiento(){
     return;
   }
   const idx = ((vCliente.entreno_dia_actual || 1) - 1) % vRutinaDias.length;
-  const dia = vRutinaDias[idx];
+  wrap.innerHTML = `
+    <div class="tabs" id="miEntrenoDiaTabs" style="overflow-x:auto;flex-wrap:nowrap;">
+      ${vRutinaDias.map((d,i)=>`<button class="tab-btn${i===idx?' active':''}" style="flex:0 0 auto;padding:9px 16px;" onclick="selectDiaTab('${d.id}', this)">${d.nombre}</button>`).join('')}
+    </div>
+    <div id="miEntrenoDiaContent">${loadingHtml()}</div>
+  `;
+  await renderDiaContent(vRutinaDias[idx]);
+}
+
+async function renderDiaContent(dia){
   vHoyDia = dia;
   const bodyHtml = dia.tipo === 'gym' ? await buildMiEntrenoExsHtml(dia) : await buildMiEntrenoRunHtml(dia);
-  wrap.innerHTML = `<h2>${dia.nombre}</h2>
+  document.getElementById('miEntrenoDiaContent').innerHTML = `
     ${bodyHtml}
     <div class="inline" style="margin-top:18px;">
       ${dia.tipo!=='gym' ? `<button class="secondary" onclick="guardarProgresoDia(false)">Guardar progreso</button>` : ''}
       <button onclick="guardarProgresoDia(true)">Completar día y avanzar</button>
     </div>`;
+}
+
+async function selectDiaTab(diaId, btn){
+  document.querySelectorAll('#miEntrenoDiaTabs .tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('miEntrenoDiaContent').innerHTML = loadingHtml();
+  const dia = vRutinaDias.find(d=>d.id===diaId);
+  await renderDiaContent(dia);
 }
 
 async function buildMiEntrenoExsHtml(dia){
@@ -1029,7 +1046,7 @@ async function guardarProgresoDia(avanzar){
     await sb.from('registro_running').insert(payload);
   }
   if(avanzar){
-    const idx = ((vCliente.entreno_dia_actual || 1) - 1) % vRutinaDias.length;
+    const idx = vRutinaDias.findIndex(d=>d.id===dia.id);
     const nextValue = ((idx + 1) % vRutinaDias.length) + 1;
     await sb.from('clientes').update({ entreno_dia_actual: nextValue }).eq('id', vCliente.id);
     vCliente.entreno_dia_actual = nextValue;
@@ -1757,7 +1774,7 @@ window.openEditFood=openEditFood; window.openFoodModal=openFoodModal; window.clo
 window.openEditExercise=openEditExercise; window.openExerciseModal=openExerciseModal; window.closeExerciseModal=closeExerciseModal; window.saveExercise=saveExercise; window.confirmDeleteExercise=confirmDeleteExercise; window.filterEjercicios=filterEjercicios;
 window.openDiaModal=openDiaModal; window.closeDiaModal=closeDiaModal; window.saveDia=saveDia; window.confirmDeleteDia=confirmDeleteDia;
 window.openRutinaEjercicioModal=openRutinaEjercicioModal; window.closeRutinaEjercicioModal=closeRutinaEjercicioModal; window.saveRutinaEjercicio=saveRutinaEjercicio; window.confirmDeleteRutinaEjercicio=confirmDeleteRutinaEjercicio;
-window.guardarProgresoDia=guardarProgresoDia;
+window.guardarProgresoDia=guardarProgresoDia; window.selectDiaTab=selectDiaTab;
 window.selectSerie=selectSerie; window.addSerie=addSerie; window.removeSerie=removeSerie; window.guardarSerie=guardarSerie;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
