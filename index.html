@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -822,6 +823,8 @@ function renderPerfilTabContent(){
       <div class="field"><label>Altura (cm)</label><input type="number" id="p_altura" value="${cliente.altura ?? ''}"></div>
       <div class="field"><label>Kcal de mantenimiento</label><input type="number" id="p_kcal_mant" value="${cliente.kcal_mantenimiento ?? ''}"></div>
       <div class="field"><label>% de grasa actual</label><input type="number" step="0.1" id="p_grasa_pct" value="${cliente.grasa_corporal ?? ''}"></div>
+      <div class="field"><label>Peso inicial (kg)</label><input type="number" step="0.1" id="p_peso_inicial" value="${cliente.peso_inicial ?? ''}" ${(vOpts && vOpts.isSelf) ? 'disabled' : ''}></div>
+      <div class="field"><label>% de grasa inicial</label><input type="number" step="0.1" id="p_grasa_pct_inicial" value="${cliente.grasa_corporal_inicial ?? ''}" ${(vOpts && vOpts.isSelf) ? 'disabled' : ''}></div>
     </div>
     <div class="field" style="margin-top:8px;max-width:300px;"><label>Objetivo actual</label>
       <select id="p_objetivo">
@@ -894,7 +897,7 @@ async function renderDiaForDate(){
     ? await buildMiEntrenoExsHtml(dia, vEntrenoViewDate, isToday)
     : await buildMiEntrenoRunHtml(dia, vEntrenoViewDate, isToday);
   document.getElementById('miEntrenoDiaContent').innerHTML = `
-    <div class="field" style="max-width:200px;margin-bottom:16px;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()"></div>
+    <div class="field" style="max-width:150px;margin-bottom:16px;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()"></div>
     ${bodyHtml}
     ${isToday ? `<div class="inline" style="margin-top:18px;">
       ${dia.tipo!=='gym' ? `<button class="secondary" onclick="guardarProgresoDia(false)">Guardar progreso</button>` : ''}
@@ -954,7 +957,7 @@ async function buildMiEntrenoExsHtml(dia, viewDate, isToday){
         savedReps: row ? row.reps : undefined
       });
     }
-    miEntrenoState[re.ejercicio_id] = { re, activeIndex: 0, series };
+    miEntrenoState[re.ejercicio_id] = { re, activeIndex: 0, series, expanded: false };
   });
   if(!ejs.length) return '<div id="miEntrenoExs"><p class="muted">Este día no tiene ejercicios asignados todavía.</p></div>';
   return '<div id="miEntrenoExs">' + ejs.map(re=>renderEjercicioWidgetHtml(re.ejercicio_id)).join('') + '</div>';
@@ -963,24 +966,43 @@ async function buildMiEntrenoExsHtml(dia, viewDate, isToday){
 function renderEjercicioWidgetHtml(ej){
   const st = miEntrenoState[ej];
   const re = st.re;
+  const allSaved = st.series.every(s=>s.saved);
+  const head = `<div class="acc-head" onclick="toggleEjercicioExpand('${ej}')" style="display:flex;justify-content:space-between;align-items:center;padding:14px;cursor:pointer;">
+    <div>
+      <div style="font-weight:600;">${re.ejercicios ? re.ejercicios.nombre : '—'}${allSaved ? ' ✓' : ''}</div>
+      <div class="muted" style="font-size:12px;">${re.ejercicios && re.ejercicios.grupo_muscular ? re.ejercicios.grupo_muscular+' · ' : ''}${st.series.length} serie${st.series.length===1?'':'s'}</div>
+    </div>
+    <span class="muted" style="font-size:12px;">${st.expanded ? '▴' : '▾'}</span>
+  </div>`;
+
+  if(!st.expanded){
+    return `<div class="card" id="teCard_${ej}" style="margin-bottom:10px;padding:0;">${head}</div>`;
+  }
+
   const tabsHtml = st.series.map((s,i)=>`<div class="te-tab${i===st.activeIndex?' active':''}" onclick="selectSerie('${ej}',${i})">Serie ${i+1}</div>`).join('')
     + `<div class="te-tab te-add" onclick="addSerie('${ej}')">+</div>`
     + (st.series.length>1 ? `<div class="te-tab te-remove" onclick="removeSerie('${ej}')">✕</div>` : '');
   const cur = st.series[st.activeIndex];
-  return `<div class="card" id="teCard_${ej}" style="margin-bottom:14px;padding:14px;">
-    <strong style="display:block;text-align:center;">${re.ejercicios ? re.ejercicios.nombre : '—'}</strong>
-    ${re.ejercicios && re.ejercicios.grupo_muscular ? `<div class="muted" style="text-align:center;margin-bottom:14px;">${re.ejercicios.grupo_muscular}</div>` : '<div style="margin-bottom:14px;"></div>'}
-    <div class="te-tabs">${tabsHtml}</div>
-    <div class="te-row">
-      <div class="field"><label>Peso (kg)</label><input type="number" step="0.5" id="tePeso_${ej}" value="${cur.peso ?? ''}"></div>
-      <div class="te-x">×</div>
-      <div class="field"><label>Reps</label><input type="number" id="teReps_${ej}" value="${cur.reps ?? ''}"></div>
+  return `<div class="card" id="teCard_${ej}" style="margin-bottom:10px;padding:0;">
+    ${head}
+    <div style="padding:0 14px 14px;border-top:1px solid var(--border);padding-top:14px;">
+      <div class="te-tabs">${tabsHtml}</div>
+      <div class="te-row">
+        <div class="field"><label>Peso (kg)</label><input type="number" step="0.5" id="tePeso_${ej}" value="${cur.peso ?? ''}"></div>
+        <div class="te-x">×</div>
+        <div class="field"><label>Reps</label><input type="number" id="teReps_${ej}" value="${cur.reps ?? ''}"></div>
+      </div>
+      <div class="te-refs" style="margin-bottom:12px;">
+        <div><span class="k">Última vez</span><span class="v">${cur.prevLabel}</span></div>
+      </div>
+      <button class="te-save${cur.saved ? ' saved' : ''}" style="width:100%;" onclick="guardarSerie('${ej}')">${cur.saved ? 'Guardado ✓' : '✓'}</button>
     </div>
-    <div class="te-refs" style="margin-bottom:12px;">
-      <div><span class="k">Última vez</span><span class="v">${cur.prevLabel}</span></div>
-    </div>
-    <button class="te-save${cur.saved ? ' saved' : ''}" style="width:100%;" onclick="guardarSerie('${ej}')">${cur.saved ? 'Guardado ✓' : '✓'}</button>
   </div>`;
+}
+
+function toggleEjercicioExpand(ej){
+  miEntrenoState[ej].expanded = !miEntrenoState[ej].expanded;
+  refreshEjercicioWidget(ej);
 }
 
 async function guardarSerie(ej){
@@ -1373,6 +1395,8 @@ async function saveProfile(){
     objetivo: document.getElementById('p_objetivo').value || null,
     kcal_mantenimiento: document.getElementById('p_kcal_mant').value || null,
     grasa_corporal: document.getElementById('p_grasa_pct').value || null,
+    peso_inicial: document.getElementById('p_peso_inicial').value || null,
+    grasa_corporal_inicial: document.getElementById('p_grasa_pct_inicial').value || null,
   };
   await sb.from('clientes').update(upd).eq('id', vCliente.id);
   vCliente = Object.assign(vCliente, upd);
@@ -1819,7 +1843,7 @@ window.openEditFood=openEditFood; window.openFoodModal=openFoodModal; window.clo
 window.openEditExercise=openEditExercise; window.openExerciseModal=openExerciseModal; window.closeExerciseModal=closeExerciseModal; window.saveExercise=saveExercise; window.confirmDeleteExercise=confirmDeleteExercise; window.filterEjercicios=filterEjercicios;
 window.openDiaModal=openDiaModal; window.closeDiaModal=closeDiaModal; window.saveDia=saveDia; window.confirmDeleteDia=confirmDeleteDia;
 window.openRutinaEjercicioModal=openRutinaEjercicioModal; window.closeRutinaEjercicioModal=closeRutinaEjercicioModal; window.saveRutinaEjercicio=saveRutinaEjercicio; window.confirmDeleteRutinaEjercicio=confirmDeleteRutinaEjercicio;
-window.guardarProgresoDia=guardarProgresoDia; window.selectDiaTab=selectDiaTab; window.onEntrenoDateChange=onEntrenoDateChange;
+window.guardarProgresoDia=guardarProgresoDia; window.selectDiaTab=selectDiaTab; window.onEntrenoDateChange=onEntrenoDateChange; window.toggleEjercicioExpand=toggleEjercicioExpand;
 window.selectSerie=selectSerie; window.addSerie=addSerie; window.removeSerie=removeSerie; window.guardarSerie=guardarSerie;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
