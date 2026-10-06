@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -719,6 +720,8 @@ let vEntrenoViewDate = null; // fecha que se está viendo en Entrenamiento (hoy 
 let miEntrenoState = {};   // { [ejercicio_id]: { re, activeIndex, series:[{peso,reps,prevLabel}] } }
 let vProgresoEjercicios = {}; // { [ejercicio_id]: { id, nombre, grupo, rows:[{fecha,peso}] } } — solo progreso (solo lectura)
 let progresoPesoChartObj = null, progresoExChartObj = null;
+let vEntrenoTimerStart = null, vEntrenoTimerInterval = null;
+let vRestTimerEnd = null, vRestTimerInterval = null;
 let vHistoryPrecomputed = null; // kcal por día ya calculados, para pintar el historial sin volver a consultar
 
 function loadingHtml(){
@@ -986,8 +989,9 @@ async function buildMiEntrenoExsHtml(dia, viewDate, isToday){
     }
     miEntrenoState[re.ejercicio_id] = { re, activeIndex: 0, series, expanded: false };
   });
-  if(!ejs.length) return '<div id="miEntrenoExs"><p class="muted">Este día no tiene ejercicios asignados todavía.</p></div>';
-  return '<div id="miEntrenoExs">' + ejs.map(re=>renderEjercicioWidgetHtml(re.ejercicio_id)).join('') + '</div>';
+  const header = entrenoTimerHeaderHtml();
+  if(!ejs.length) return '<div id="miEntrenoExs">' + header + '<p class="muted">Este día no tiene ejercicios asignados todavía.</p></div>';
+  return '<div id="miEntrenoExs">' + header + ejs.map(re=>renderEjercicioWidgetHtml(re.ejercicio_id)).join('') + '</div>';
 }
 
 function renderEjercicioWidgetHtml(ej){
@@ -1028,8 +1032,126 @@ function renderEjercicioWidgetHtml(ej){
 }
 
 function toggleEjercicioExpand(ej){
-  miEntrenoState[ej].expanded = !miEntrenoState[ej].expanded;
+  const wasExpanded = miEntrenoState[ej].expanded;
+  miEntrenoState[ej].expanded = !wasExpanded;
   refreshEjercicioWidget(ej);
+  if(!wasExpanded) ensureEntrenoTimerStarted();
+}
+
+// ---------- Cronómetro general del entrenamiento ----------
+function entrenoTimerKey(){
+  return `ynl_entreno_start_${vCliente.id}_${vHoyDia.id}_${vEntrenoViewDate}`;
+}
+
+function entrenoTimerHeaderHtml(){
+  return `<div class="card" style="margin-bottom:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+    <div><span class="muted" style="font-size:11px;display:block;">Duración</span><span id="entrenoDuracion" style="font-size:16px;font-weight:600;">--:--:--</span></div>
+    <div id="entrenoDescansoWrap"></div>
+  </div>`;
+}
+
+function ensureEntrenoTimerStarted(){
+  if(vEntrenoTimerInterval) return;
+  const key = entrenoTimerKey();
+  let start = parseInt(localStorage.getItem(key));
+  if(!start){
+    start = Date.now();
+    localStorage.setItem(key, String(start));
+  }
+  vEntrenoTimerStart = start;
+  tickEntrenoTimer();
+  vEntrenoTimerInterval = setInterval(tickEntrenoTimer, 1000);
+  renderRestTimerControls();
+}
+
+function tickEntrenoTimer(){
+  const el = document.getElementById('entrenoDuracion');
+  if(!el || !vEntrenoTimerStart){ clearEntrenoTimer(); return; }
+  const secs = Math.floor((Date.now() - vEntrenoTimerStart) / 1000);
+  const h = String(Math.floor(secs/3600)).padStart(2,'0');
+  const m = String(Math.floor((secs%3600)/60)).padStart(2,'0');
+  const s = String(secs%60).padStart(2,'0');
+  el.textContent = `${h}:${m}:${s}`;
+}
+
+function clearEntrenoTimer(){
+  if(vEntrenoTimerInterval){ clearInterval(vEntrenoTimerInterval); vEntrenoTimerInterval = null; }
+  vEntrenoTimerStart = null;
+}
+
+// ---------- Timer de descanso con timbre ----------
+function renderRestTimerControls(){
+  const wrap = document.getElementById('entrenoDescansoWrap');
+  if(!wrap) return;
+  if(vRestTimerEnd){
+    const secsLeft = Math.max(0, Math.ceil((vRestTimerEnd - Date.now())/1000));
+    const m = String(Math.floor(secsLeft/60)).padStart(2,'0');
+    const s = String(secsLeft%60).padStart(2,'0');
+    wrap.innerHTML = `<div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:16px;font-weight:600;">${m}:${s}</span>
+      <button class="small secondary" onclick="cancelRestTimer()">✕</button>
+    </div>`;
+  } else {
+    wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <button class="small secondary" onclick="startRestTimer(30)">30s</button>
+      <button class="small secondary" onclick="startRestTimer(60)">60s</button>
+      <button class="small secondary" onclick="startRestTimer(90)">90s</button>
+      <button class="small secondary" onclick="startRestTimer(120)">120s</button>
+      <input type="number" id="restCustomMin" step="0.5" min="0.5" placeholder="min" style="width:56px;padding:6px 8px;font-size:13px;">
+      <button class="small secondary" onclick="startRestTimerCustom()">Iniciar</button>
+    </div>`;
+  }
+}
+
+function startRestTimerCustom(){
+  const inp = document.getElementById('restCustomMin');
+  const min = parseFloat(inp.value);
+  if(!min || min <= 0) return;
+  startRestTimer(Math.round(min * 60));
+}
+
+function startRestTimer(seconds){
+  vRestTimerEnd = Date.now() + seconds*1000;
+  renderRestTimerControls();
+  if(vRestTimerInterval) clearInterval(vRestTimerInterval);
+  vRestTimerInterval = setInterval(tickRestTimer, 250);
+}
+
+function tickRestTimer(){
+  if(!vRestTimerEnd) return;
+  if(Date.now() >= vRestTimerEnd){
+    clearInterval(vRestTimerInterval);
+    vRestTimerInterval = null;
+    vRestTimerEnd = null;
+    playTimbre();
+    renderRestTimerControls();
+    return;
+  }
+  renderRestTimerControls();
+}
+
+function cancelRestTimer(){
+  if(vRestTimerInterval){ clearInterval(vRestTimerInterval); vRestTimerInterval = null; }
+  vRestTimerEnd = null;
+  renderRestTimerControls();
+}
+
+function playTimbre(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.25].forEach(delay=>{
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = 880;
+      o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(0.0001, ctx.currentTime + delay);
+      g.gain.exponentialRampToValueAtTime(0.35, ctx.currentTime + delay + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + delay + 0.22);
+      o.start(ctx.currentTime + delay);
+      o.stop(ctx.currentTime + delay + 0.25);
+    });
+  }catch(e){}
+  if(navigator.vibrate) navigator.vibrate([150,80,150]);
 }
 
 async function guardarSerie(ej){
@@ -1872,6 +1994,7 @@ window.openEditExercise=openEditExercise; window.openExerciseModal=openExerciseM
 window.openDiaModal=openDiaModal; window.closeDiaModal=closeDiaModal; window.saveDia=saveDia; window.confirmDeleteDia=confirmDeleteDia;
 window.openRutinaEjercicioModal=openRutinaEjercicioModal; window.closeRutinaEjercicioModal=closeRutinaEjercicioModal; window.saveRutinaEjercicio=saveRutinaEjercicio; window.confirmDeleteRutinaEjercicio=confirmDeleteRutinaEjercicio;
 window.guardarProgresoDia=guardarProgresoDia; window.selectDiaTab=selectDiaTab; window.onEntrenoDateChange=onEntrenoDateChange; window.toggleEjercicioExpand=toggleEjercicioExpand;
+window.startRestTimer=startRestTimer; window.cancelRestTimer=cancelRestTimer; window.startRestTimerCustom=startRestTimerCustom;
 window.selectSerie=selectSerie; window.addSerie=addSerie; window.removeSerie=removeSerie; window.guardarSerie=guardarSerie;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
