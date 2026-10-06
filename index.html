@@ -159,10 +159,8 @@
   <div class="modal">
     <h1 id="exModalTitle" style="font-size:16px;">Agregar ejercicio</h1>
     <label>Grupo muscular</label>
-    <select id="ex_grupo">
-      <option>Abs</option><option>Bíceps</option><option>Cuádriceps</option><option>Deltoides</option><option>Espalda</option>
-      <option>Glúteo</option><option>Isquios</option><option>Pantorrilla</option><option>Pecho</option><option>Tríceps</option>
-    </select>
+    <select id="ex_grupo" onchange="onExGrupoChange()"></select>
+    <input type="text" id="ex_grupo_nueva" placeholder="Nombre del nuevo grupo muscular" style="display:none;margin-top:6px;">
     <label>Nombre del ejercicio</label>
     <input type="text" id="ex_nombre" placeholder="Ej. Press banca con barra">
     <label>Video (opcional)</label>
@@ -591,6 +589,13 @@ async function loadEjercicios(){
     return;
   }
   ejerciciosCache = data;
+  const filterSel = document.getElementById('exGrupoFilter');
+  if(filterSel){
+    const prevVal = filterSel.value;
+    const grupos = [...new Set([...GRUPOS_MUSCULARES, ...ejerciciosCache.map(e=>e.grupo_muscular)])].sort((a,b)=>a.localeCompare(b));
+    filterSel.innerHTML = '<option value="">Todos los grupos</option>' + grupos.map(g=>`<option value="${g}">${g}</option>`).join('');
+    filterSel.value = prevVal;
+  }
   if(document.getElementById('exTableBody')) renderEjercicioRows(ejerciciosCache);
 }
 
@@ -628,13 +633,28 @@ async function confirmDeleteExercise(id){
   await loadEjercicios();
 }
 
+function fillGrupoSelect(selected){
+  const used = (ejerciciosCache||[]).map(e=>e.grupo_muscular);
+  const grupos = [...new Set([...GRUPOS_MUSCULARES, ...used])].sort((a,b)=>a.localeCompare(b));
+  const sel = document.getElementById('ex_grupo');
+  sel.innerHTML = grupos.map(g=>`<option value="${g}">${g}</option>`).join('') + '<option value="__nueva__">+ Nueva categoría…</option>';
+  if(selected) sel.value = selected;
+  document.getElementById('ex_grupo_nueva').style.display = 'none';
+  document.getElementById('ex_grupo_nueva').value = '';
+}
+
+function onExGrupoChange(){
+  const isNew = document.getElementById('ex_grupo').value === '__nueva__';
+  document.getElementById('ex_grupo_nueva').style.display = isNew ? '' : 'none';
+}
+
 function openExerciseModal(){
   editingExerciseId = null;
   document.getElementById('exModalTitle').textContent = 'Agregar ejercicio';
   document.getElementById('exModalSaveBtn').textContent = 'Guardar';
   document.getElementById('exModalErr').textContent = '';
   ['ex_nombre','ex_video','ex_notas'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('ex_grupo').value = GRUPOS_MUSCULARES[0];
+  fillGrupoSelect(GRUPOS_MUSCULARES[0]);
   document.getElementById('exModalBg').classList.add('show');
 }
 
@@ -645,7 +665,7 @@ function openEditExercise(id){
   document.getElementById('exModalTitle').textContent = 'Editar ejercicio';
   document.getElementById('exModalSaveBtn').textContent = 'Guardar cambios';
   document.getElementById('exModalErr').textContent = '';
-  document.getElementById('ex_grupo').value = e.grupo_muscular;
+  fillGrupoSelect(e.grupo_muscular);
   document.getElementById('ex_nombre').value = e.nombre || '';
   document.getElementById('ex_video').value = e.video_url || '';
   document.getElementById('ex_notas').value = e.notas || '';
@@ -655,12 +675,14 @@ function openEditExercise(id){
 function closeExerciseModal(){ document.getElementById('exModalBg').classList.remove('show'); }
 
 async function saveExercise(){
-  const grupo_muscular = document.getElementById('ex_grupo').value;
+  const grupoSelVal = document.getElementById('ex_grupo').value;
+  const grupo_muscular = grupoSelVal === '__nueva__' ? document.getElementById('ex_grupo_nueva').value.trim() : grupoSelVal;
   const nombre = document.getElementById('ex_nombre').value.trim();
   const video_url = document.getElementById('ex_video').value.trim();
   const notas = document.getElementById('ex_notas').value.trim();
   const err = document.getElementById('exModalErr');
   if(!nombre){ err.textContent = 'Escribe el nombre del ejercicio.'; return; }
+  if(!grupo_muscular){ err.textContent = 'Escribe el nombre del nuevo grupo muscular.'; return; }
   if(editingExerciseId){
     const { data: upd, error: updErr } = await sb.from('ejercicios').update({
       grupo_muscular, nombre, video_url: video_url || null, notas: notas || null,
@@ -1218,7 +1240,8 @@ function openRutinaEjercicioModal(diaId, id){
   const sel = document.getElementById('re_ejercicio');
   const byGrupo = {};
   (ejerciciosCache||[]).forEach(e=>{ (byGrupo[e.grupo_muscular]=byGrupo[e.grupo_muscular]||[]).push(e); });
-  sel.innerHTML = GRUPOS_MUSCULARES.filter(g=>byGrupo[g]).map(g=>
+  const gruposOrdenados = [...new Set([...GRUPOS_MUSCULARES, ...Object.keys(byGrupo)])].sort((a,b)=>a.localeCompare(b));
+  sel.innerHTML = gruposOrdenados.filter(g=>byGrupo[g]).map(g=>
     `<optgroup label="${g}">${byGrupo[g].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('')}</optgroup>`
   ).join('');
   const dia = vRutinaDias.find(x=>x.id===diaId);
@@ -1775,7 +1798,7 @@ async function renderProgresoTab(){
   });
 
   const exList = Object.values(vProgresoEjercicios);
-  const gruposConDatos = GRUPOS_MUSCULARES.filter(g=>exList.some(e=>e.grupo===g));
+  const gruposConDatos = [...new Set([...GRUPOS_MUSCULARES, ...exList.map(e=>e.grupo)])].sort((a,b)=>a.localeCompare(b)).filter(g=>exList.some(e=>e.grupo===g));
 
   document.getElementById('clienteTabContent').innerHTML = `
     <h2>Progreso</h2>
