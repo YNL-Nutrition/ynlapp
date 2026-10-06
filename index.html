@@ -722,6 +722,7 @@ let vProgresoEjercicios = {}; // { [ejercicio_id]: { id, nombre, grupo, rows:[{f
 let progresoPesoChartObj = null, progresoExChartObj = null;
 let vEntrenoTimerStart = null, vEntrenoTimerInterval = null;
 let vRestTimerEnd = null, vRestTimerInterval = null;
+let vRestDurationSeconds = null, vRestRemainingSeconds = null;
 let vHistoryPrecomputed = null; // kcal por día ya calculados, para pintar el historial sin volver a consultar
 
 function loadingHtml(){
@@ -927,7 +928,10 @@ async function renderDiaForDate(){
     ? await buildMiEntrenoExsHtml(dia, vEntrenoViewDate, isToday)
     : await buildMiEntrenoRunHtml(dia, vEntrenoViewDate, isToday);
   document.getElementById('miEntrenoDiaContent').innerHTML = `
-    <div class="field" style="max-width:110px;margin-bottom:16px;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()"></div>
+    <div class="inline" style="align-items:flex-end;margin-bottom:16px;">
+      <div class="field" style="max-width:110px;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()"></div>
+      ${(isToday && dia.tipo==='gym') ? `<div><span class="muted" style="font-size:11px;display:block;">Duración</span><span id="entrenoDuracion" style="font-size:16px;font-weight:600;">--:--:--</span></div>` : ''}
+    </div>
     ${bodyHtml}
     ${isToday ? `<div class="inline" style="margin-top:18px;">
       ${dia.tipo!=='gym' ? `<button class="secondary" onclick="guardarProgresoDia(false)">Guardar progreso</button>` : ''}
@@ -1044,10 +1048,22 @@ function entrenoTimerKey(){
 }
 
 function entrenoTimerHeaderHtml(){
-  return `<div class="card" style="margin-bottom:14px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-    <div><span class="muted" style="font-size:11px;display:block;">Duración</span><span id="entrenoDuracion" style="font-size:16px;font-weight:600;">--:--:--</span></div>
-    <div id="entrenoDescansoWrap"></div>
+  return `<div class="card" style="margin-bottom:14px;padding:12px 14px;">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span class="muted" style="font-size:11px;">Descanso</span>
+      <input type="number" id="restMin" step="0.5" min="0.5" placeholder="min" value="${vRestDurationSeconds ? (vRestDurationSeconds/60) : ''}" style="width:56px;padding:6px 8px;font-size:13px;" onchange="setRestDuration(this.value)">
+      <span id="restCountdown" style="font-size:16px;font-weight:600;min-width:46px;">${vRestRemainingSeconds ? formatMinSec(vRestRemainingSeconds) : '--:--'}</span>
+      <button class="small secondary" onclick="playRestTimer()" title="Iniciar">▶</button>
+      <button class="small secondary" onclick="pauseRestTimer()" title="Pausar">⏸</button>
+      <button class="small secondary" onclick="restartRestTimer()" title="Reiniciar">↺</button>
+    </div>
   </div>`;
+}
+
+function formatMinSec(secs){
+  const m = String(Math.floor(secs/60)).padStart(2,'0');
+  const s = String(secs%60).padStart(2,'0');
+  return `${m}:${s}`;
 }
 
 function ensureEntrenoTimerStarted(){
@@ -1080,60 +1096,62 @@ function clearEntrenoTimer(){
 }
 
 // ---------- Timer de descanso con timbre ----------
-function renderRestTimerControls(){
-  const wrap = document.getElementById('entrenoDescansoWrap');
-  if(!wrap) return;
-  if(vRestTimerEnd){
-    const secsLeft = Math.max(0, Math.ceil((vRestTimerEnd - Date.now())/1000));
-    const m = String(Math.floor(secsLeft/60)).padStart(2,'0');
-    const s = String(secsLeft%60).padStart(2,'0');
-    wrap.innerHTML = `<div style="display:flex;align-items:center;gap:8px;">
-      <span style="font-size:16px;font-weight:600;">${m}:${s}</span>
-      <button class="small secondary" onclick="cancelRestTimer()">✕</button>
-    </div>`;
-  } else {
-    wrap.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-      <button class="small secondary" onclick="startRestTimer(30)">30s</button>
-      <button class="small secondary" onclick="startRestTimer(60)">60s</button>
-      <button class="small secondary" onclick="startRestTimer(90)">90s</button>
-      <button class="small secondary" onclick="startRestTimer(120)">120s</button>
-      <input type="number" id="restCustomMin" step="0.5" min="0.5" placeholder="min" style="width:56px;padding:6px 8px;font-size:13px;">
-      <button class="small secondary" onclick="startRestTimerCustom()">Iniciar</button>
-    </div>`;
+function setRestDuration(val){
+  const min = parseFloat(val);
+  vRestDurationSeconds = (min > 0) ? Math.round(min*60) : null;
+  if(!vRestTimerEnd){
+    vRestRemainingSeconds = vRestDurationSeconds;
+    updateRestDisplay();
   }
 }
 
-function startRestTimerCustom(){
-  const inp = document.getElementById('restCustomMin');
-  const min = parseFloat(inp.value);
-  if(!min || min <= 0) return;
-  startRestTimer(Math.round(min * 60));
-}
-
-function startRestTimer(seconds){
-  vRestTimerEnd = Date.now() + seconds*1000;
-  renderRestTimerControls();
+function playRestTimer(){
+  if(vRestRemainingSeconds == null || vRestRemainingSeconds <= 0){
+    if(!vRestDurationSeconds) return;
+    vRestRemainingSeconds = vRestDurationSeconds;
+  }
+  vRestTimerEnd = Date.now() + vRestRemainingSeconds*1000;
   if(vRestTimerInterval) clearInterval(vRestTimerInterval);
   vRestTimerInterval = setInterval(tickRestTimer, 250);
+  tickRestTimer();
+}
+
+function pauseRestTimer(){
+  if(!vRestTimerEnd) return;
+  vRestRemainingSeconds = Math.max(0, Math.ceil((vRestTimerEnd - Date.now())/1000));
+  clearInterval(vRestTimerInterval); vRestTimerInterval = null;
+  vRestTimerEnd = null;
+  updateRestDisplay();
+}
+
+function restartRestTimer(){
+  if(!vRestDurationSeconds) return;
+  vRestRemainingSeconds = vRestDurationSeconds;
+  playRestTimer();
 }
 
 function tickRestTimer(){
   if(!vRestTimerEnd) return;
-  if(Date.now() >= vRestTimerEnd){
-    clearInterval(vRestTimerInterval);
-    vRestTimerInterval = null;
+  const left = Math.max(0, Math.ceil((vRestTimerEnd - Date.now())/1000));
+  vRestRemainingSeconds = left;
+  updateRestDisplay();
+  if(left <= 0){
+    clearInterval(vRestTimerInterval); vRestTimerInterval = null;
     vRestTimerEnd = null;
     playTimbre();
-    renderRestTimerControls();
-    return;
   }
-  renderRestTimerControls();
 }
 
-function cancelRestTimer(){
-  if(vRestTimerInterval){ clearInterval(vRestTimerInterval); vRestTimerInterval = null; }
-  vRestTimerEnd = null;
-  renderRestTimerControls();
+function updateRestDisplay(){
+  const el = document.getElementById('restCountdown');
+  if(!el) return;
+  el.textContent = (vRestRemainingSeconds != null) ? formatMinSec(vRestRemainingSeconds) : '--:--';
+}
+
+function autoStartRestAfterSerie(){
+  if(!vRestDurationSeconds) return;
+  vRestRemainingSeconds = vRestDurationSeconds;
+  playRestTimer();
 }
 
 function playTimbre(){
@@ -1166,6 +1184,7 @@ async function guardarSerie(ej){
     await sb.from('registro_entreno').insert({ cliente_id: vCliente.id, fecha: today, dia_id: dia.id, ejercicio_id: ej, numero_serie: idx+1, peso: s.peso, reps: s.reps });
     s.saved = true;
     s.savedPeso = s.peso; s.savedReps = s.reps;
+    autoStartRestAfterSerie();
   } else {
     s.saved = false;
   }
@@ -1994,7 +2013,7 @@ window.openEditExercise=openEditExercise; window.openExerciseModal=openExerciseM
 window.openDiaModal=openDiaModal; window.closeDiaModal=closeDiaModal; window.saveDia=saveDia; window.confirmDeleteDia=confirmDeleteDia;
 window.openRutinaEjercicioModal=openRutinaEjercicioModal; window.closeRutinaEjercicioModal=closeRutinaEjercicioModal; window.saveRutinaEjercicio=saveRutinaEjercicio; window.confirmDeleteRutinaEjercicio=confirmDeleteRutinaEjercicio;
 window.guardarProgresoDia=guardarProgresoDia; window.selectDiaTab=selectDiaTab; window.onEntrenoDateChange=onEntrenoDateChange; window.toggleEjercicioExpand=toggleEjercicioExpand;
-window.startRestTimer=startRestTimer; window.cancelRestTimer=cancelRestTimer; window.startRestTimerCustom=startRestTimerCustom;
+window.setRestDuration=setRestDuration; window.playRestTimer=playRestTimer; window.pauseRestTimer=pauseRestTimer; window.restartRestTimer=restartRestTimer;
 window.selectSerie=selectSerie; window.addSerie=addSerie; window.removeSerie=removeSerie; window.guardarSerie=guardarSerie;
 window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=showEntrenadorDashboard;
 window.switchClienteTab=switchClienteTab;
