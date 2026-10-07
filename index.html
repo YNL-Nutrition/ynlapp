@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -937,7 +938,7 @@ async function renderDiaForDate(){
   document.getElementById('miEntrenoDiaContent').innerHTML = `
     <div class="inline" style="align-items:flex-end;margin-bottom:16px;">
       <div class="field" style="width:auto;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:auto;"></div>
-      ${(isToday && dia.tipo==='gym') ? `<div style="border:1px solid var(--border);border-radius:4px;padding:9px 10px;text-align:right;"><span class="muted" style="font-size:11px;display:block;">Duración</span><span id="entrenoDuracion" style="font-size:15px;font-weight:600;">--:--:--</span></div>` : ''}
+      ${(isToday && dia.tipo==='gym') ? `<div class="field" style="width:auto;"><label>Duración</label><div style="border:1px solid var(--border);border-radius:4px;padding:9px 10px;font-size:15px;font-weight:600;" id="entrenoDuracion">--:--:--</div></div>` : ''}
     </div>
     ${bodyHtml}
     ${isToday ? `<div class="inline" style="margin-top:18px;">
@@ -1103,7 +1104,7 @@ function ensureEntrenoTimerStarted(){
   vEntrenoTimerStart = start;
   tickEntrenoTimer();
   vEntrenoTimerInterval = setInterval(tickEntrenoTimer, 1000);
-  renderRestTimerControls();
+  showRestBar();
 }
 
 function tickEntrenoTimer(){
