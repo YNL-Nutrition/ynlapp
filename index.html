@@ -246,6 +246,7 @@ function wrapNumberStepper(input){
     if(input.min !== '' && v < parseFloat(input.min)) v = parseFloat(input.min);
     if(input.max !== '' && v > parseFloat(input.max)) v = parseFloat(input.max);
     input.value = v;
+    input.dispatchEvent(new Event('change', {bubbles:true}));
   }
   up.onclick = ()=>bump(1);
   down.onclick = ()=>bump(-1);
@@ -729,6 +730,11 @@ function unlockAudio(){
   try{
     if(!vAudioCtx) vAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if(vAudioCtx.state === 'suspended') vAudioCtx.resume();
+    const o = vAudioCtx.createOscillator();
+    const g = vAudioCtx.createGain();
+    g.gain.value = 0.00001;
+    o.connect(g); g.connect(vAudioCtx.destination);
+    o.start(); o.stop(vAudioCtx.currentTime + 0.01);
   }catch(e){}
 }
 let vHistoryPrecomputed = null; // kcal por día ya calculados, para pintar el historial sin volver a consultar
@@ -937,7 +943,7 @@ async function renderDiaForDate(){
     : await buildMiEntrenoRunHtml(dia, vEntrenoViewDate, isToday);
   document.getElementById('miEntrenoDiaContent').innerHTML = `
     <div class="inline" style="align-items:flex-end;margin-bottom:16px;">
-      <div class="field" style="width:auto;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:auto;"></div>
+      <div class="field" style="width:auto;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:auto;font-weight:600;"></div>
       ${(isToday && dia.tipo==='gym') ? `<div class="field" style="width:auto;"><label>Duración</label><div style="border:1px solid var(--border);border-radius:4px;padding:9px 10px;font-size:15px;font-weight:600;" id="entrenoDuracion">--:--:--</div></div>` : ''}
     </div>
     ${bodyHtml}
