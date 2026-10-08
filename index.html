@@ -721,6 +721,8 @@ let vEntrenoViewDate = null; // fecha que se está viendo en Entrenamiento (hoy 
 let miEntrenoState = {};   // { [ejercicio_id]: { re, activeIndex, series:[{peso,reps,prevLabel}] } }
 let vProgresoEjercicios = {}; // { [ejercicio_id]: { id, nombre, grupo, rows:[{fecha,peso}] } } — solo progreso (solo lectura)
 let progresoPesoChartObj = null, progresoExChartObj = null;
+let vFotosProgreso = [];
+let vFotosCargadas = false;
 let vEntrenoTimerStart = null, vEntrenoTimerInterval = null;
 let vRestTimerEnd = null, vRestTimerInterval = null;
 let vRestDurationSeconds = null, vRestRemainingSeconds = null;
@@ -1979,11 +1981,13 @@ async function renderProgresoTab(){
   const exList = Object.values(vProgresoEjercicios);
   const gruposConDatos = [...new Set([...GRUPOS_MUSCULARES, ...exList.map(e=>e.grupo)])].sort((a,b)=>a.localeCompare(b)).filter(g=>exList.some(e=>e.grupo===g));
 
+  vFotosCargadas = false;
   document.getElementById('clienteTabContent').innerHTML = `
     <h2>Progreso</h2>
     <div class="tabs" id="progresoSubTabs">
       <button class="tab-btn active" style="flex:1;" onclick="switchProgresoSub('peso',this)">Peso corporal</button>
       <button class="tab-btn" style="flex:1;" onclick="switchProgresoSub('ejercicios',this)">Ejercicios</button>
+      <button class="tab-btn" style="flex:1;" onclick="switchProgresoSub('fotos',this)">Fotos</button>
     </div>
     <div id="progresoPeso">
       <div class="chart-wrap-wide"><canvas id="progresoPesoChart" height="90"></canvas></div>
@@ -1996,6 +2000,17 @@ async function renderProgresoTab(){
         <div class="chart-wrap-wide"><canvas id="progresoExChart" height="90"></canvas></div>
       ` : `<p class="muted">Todavía no hay series registradas en ningún ejercicio.</p>`}
     </div>
+    <div id="progresoFotos" style="display:none;">
+      <div class="inline" style="margin-bottom:14px;">
+        <div class="field" style="max-width:150px;"><label>Fecha</label><input type="date" id="fotoFecha" value="${todayStr()}" max="${todayStr()}"></div>
+        <label class="secondary" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border:1px solid var(--ink);border-radius:4px;cursor:pointer;font-size:14px;">
+          + Subir foto
+          <input type="file" accept="image/*" id="fotoInput" style="display:none;" onchange="onFotoFileSelected(event)">
+        </label>
+      </div>
+      <p class="muted" id="fotoUploadStatus" style="display:none;"></p>
+      <div id="fotosGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;"><p class="muted">Cargando…</p></div>
+    </div>
   `;
 
   renderProgresoPesoChart();
@@ -2007,6 +2022,85 @@ function switchProgresoSub(which, btn){
   btn.classList.add('active');
   document.getElementById('progresoPeso').style.display = which==='peso' ? '' : 'none';
   document.getElementById('progresoEjercicios').style.display = which==='ejercicios' ? '' : 'none';
+  document.getElementById('progresoFotos').style.display = which==='fotos' ? '' : 'none';
+  if(which==='fotos' && !vFotosCargadas){
+    vFotosCargadas = true;
+    loadFotosProgreso();
+  }
+}
+
+// ---------- Fotos de progreso ----------
+async function loadFotosProgreso(){
+  const { data } = await sb.from('fotos_progreso').select('*').eq('cliente_id', vCliente.id).order('fecha', { ascending:false });
+  vFotosProgreso = data || [];
+  await renderFotosGrid();
+}
+
+async function renderFotosGrid(){
+  const grid = document.getElementById('fotosGrid');
+  if(!grid) return;
+  if(!vFotosProgreso.length){ grid.innerHTML = '<p class="muted">Todavía no hay fotos.</p>'; return; }
+  const urls = await Promise.all(vFotosProgreso.map(f=> sb.storage.from('fotos-progreso').createSignedUrl(f.storage_path, 3600)));
+  grid.innerHTML = vFotosProgreso.map((f,i)=>{
+    const url = urls[i].data ? urls[i].data.signedUrl : '';
+    const fechaFmt = new Date(f.fecha+'T00:00:00').toLocaleDateString('es-CO', { day:'numeric', month:'short', year:'numeric' });
+    return `<div style="position:relative;">
+      <img src="${url}" onclick="window.open('${url}','_blank')" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;display:block;">
+      <div class="muted" style="font-size:10px;margin-top:3px;text-align:center;">${fechaFmt}</div>
+      <button onclick="deleteFotoProgreso('${f.id}','${f.storage_path}')" title="Eliminar" style="position:absolute;top:4px;right:4px;background:rgba(255,255,255,0.92);border:1px solid var(--border);border-radius:50%;width:22px;height:22px;font-size:11px;line-height:1;cursor:pointer;padding:0;">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function resizeImageFile(file, maxDim){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const img = new Image();
+      img.onload = ()=>{
+        let { width, height } = img;
+        if(width > height && width > maxDim){ height = Math.round(height*maxDim/width); width = maxDim; }
+        else if(height >= width && height > maxDim){ width = Math.round(width*maxDim/height); height = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('No se pudo procesar la imagen')), 'image/jpeg', 0.82);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function onFotoFileSelected(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const statusEl = document.getElementById('fotoUploadStatus');
+  statusEl.style.display = '';
+  statusEl.textContent = 'Subiendo…';
+  try{
+    const blob = await resizeImageFile(file, 1280);
+    const fecha = document.getElementById('fotoFecha').value || todayStr();
+    const path = `${vCliente.id}/${Date.now()}.jpg`;
+    const { error: upErr } = await sb.storage.from('fotos-progreso').upload(path, blob, { contentType:'image/jpeg' });
+    if(upErr){ statusEl.textContent = 'Error al subir: ' + upErr.message; return; }
+    const { error: insErr } = await sb.from('fotos_progreso').insert({ cliente_id: vCliente.id, fecha, storage_path: path });
+    if(insErr){ statusEl.textContent = 'Error al guardar: ' + insErr.message; return; }
+    statusEl.style.display = 'none';
+    evt.target.value = '';
+    await loadFotosProgreso();
+  }catch(e){
+    statusEl.textContent = 'No se pudo procesar la imagen.';
+  }
+}
+
+async function deleteFotoProgreso(id, path){
+  if(!confirm('¿Eliminar esta foto? No se puede deshacer.')) return;
+  await sb.storage.from('fotos-progreso').remove([path]);
+  await sb.from('fotos_progreso').delete().eq('id', id);
+  await loadFotosProgreso();
 }
 
 function renderProgresoPesoChart(){
@@ -2057,6 +2151,7 @@ window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=s
 window.switchClienteTab=switchClienteTab;
 window.renderClienteHome=renderClienteHome; window.renderClienteTabsScreen=renderClienteTabsScreen;
 window.switchProgresoSub=switchProgresoSub; window.renderProgresoExChart=renderProgresoExChart;
+window.onFotoFileSelected=onFotoFileSelected; window.deleteFotoProgreso=deleteFotoProgreso;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
