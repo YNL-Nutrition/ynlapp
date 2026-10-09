@@ -946,9 +946,7 @@ async function renderMiEntrenamiento(){
     wrap.innerHTML = `<h2>Entrenamiento</h2><p class="muted">Tu entrenador aún no te ha asignado una rutina.</p>`;
     return;
   }
-  const idx = ((vCliente.entreno_dia_actual || 1) - 1) % vRutinaDias.length;
-  renderDiaAccordionList(vRutinaDias[idx].id);
-  await renderDiaContent(vRutinaDias[idx]);
+  renderDiaAccordionList(null);
 }
 
 function renderDiaAccordionList(activeDiaId){
@@ -979,9 +977,15 @@ async function renderDiaForDate(){
     ? await buildMiEntrenoExsHtml(dia, vEntrenoViewDate, isToday)
     : await buildMiEntrenoRunHtml(dia, vEntrenoViewDate, isToday);
   document.getElementById('miEntrenoDiaContent').innerHTML = `
-    <div class="inline" style="align-items:flex-end;margin-bottom:16px;">
-      <div class="field" style="width:auto;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:auto;font-weight:600;height:38px;box-sizing:border-box;"></div>
-      ${(isToday && dia.tipo==='gym') ? `<div class="field" style="width:auto;"><label>Duración</label><div style="border:1px solid var(--border);border-radius:4px;padding:9px 10px;font-size:15px;font-weight:600;height:38px;box-sizing:border-box;display:flex;align-items:center;" id="entrenoDuracion">--:--:--</div></div>` : ''}
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;">
+      <div style="display:flex;flex-direction:column;">
+        <label style="font-size:11px;color:var(--muted);margin-bottom:3px;">Fecha</label>
+        <input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:auto;font-weight:600;height:38px;box-sizing:border-box;">
+      </div>
+      ${(isToday && dia.tipo==='gym') ? `<div style="display:flex;flex-direction:column;">
+        <label style="font-size:11px;color:var(--muted);margin-bottom:3px;">Duración</label>
+        <div style="border:1px solid var(--border);border-radius:4px;padding:0 10px;font-size:15px;font-weight:600;height:38px;box-sizing:border-box;display:flex;align-items:center;" id="entrenoDuracion">--:--:--</div>
+      </div>` : ''}
     </div>
     ${bodyHtml}
     ${isToday ? `<div class="inline" style="margin-top:18px;">
@@ -1620,7 +1624,7 @@ async function renderNutricionTab(){
 
   document.getElementById('clienteTabContent').innerHTML = wrapAccordionList(
     accordionSectionHtml('metas', 'Metas diarias', metasBody, false) +
-    accordionSectionHtml('registro', 'Registro diario', registroBody, true) +
+    accordionSectionHtml('registro', 'Registro diario', registroBody, false) +
     accordionSectionHtml('peso', 'Peso corporal', pesoBody, false) +
     accordionSectionHtml('notas', 'Notas del día', notasBody, false)
   );
