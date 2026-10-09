@@ -36,7 +36,7 @@
   .te-tab.active{background:var(--ink);color:#fff;border-color:var(--ink);}
   .te-tab.te-add,.te-tab.te-remove{flex:0 0 40px;color:var(--muted);}
   .sec-title{text-align:center;padding:14px 0;cursor:pointer;}
-  .sec-title .t{display:inline-block;width:170px;text-align:center;font-size:15px;font-weight:600;border-bottom:1px solid var(--border);padding-bottom:10px;}
+  .sec-title .t{display:inline-block;width:170px;text-align:center;font-size:17px;font-weight:600;border-bottom:1px solid var(--border);padding-bottom:10px;}
   .sec-title.active .t{border-bottom-color:var(--ink);}
   .sec-title .chev{color:var(--muted);font-size:12px;margin-left:4px;}
   .te-save.saved{background:none;color:var(--ink);border:1px solid var(--ink);}
@@ -756,6 +756,10 @@ function accordionSectionHtml(id, title, bodyHtml, isOpen){
     </div>`;
 }
 
+function wrapAccordionList(sectionsHtml){
+  return `<div style="display:flex;flex-direction:column;justify-content:space-evenly;min-height:60vh;">${sectionsHtml}</div>`;
+}
+
 function toggleAccordionSection(id){
   const body = document.getElementById('secBody_'+id);
   const header = body.previousElementSibling;
@@ -915,9 +919,10 @@ function renderPerfilTabContent(){
       <div style="margin-top:8px;"><button onclick="saveProfileNote()">Agregar nota</button></div>
     </div>
   `;
-  document.getElementById('clienteTabContent').innerHTML =
+  document.getElementById('clienteTabContent').innerHTML = wrapAccordionList(
     accordionSectionHtml('datos', 'Datos básicos', datosBody, false) +
-    accordionSectionHtml('perfilnotas', 'Notas del perfil', notasBody, false);
+    accordionSectionHtml('perfilnotas', 'Notas del perfil', notasBody, false)
+  );
   loadNotes('perfil');
 }
 
@@ -948,11 +953,11 @@ async function renderMiEntrenamiento(){
 
 function renderDiaAccordionList(activeDiaId){
   const wrap = document.getElementById('clienteTabContent');
-  wrap.innerHTML = vRutinaDias.map(d=>{
+  wrap.innerHTML = wrapAccordionList(vRutinaDias.map(d=>{
     const isActive = d.id === activeDiaId;
     return `<div class="sec-title${isActive ? ' active' : ''}" onclick="selectDiaTab('${d.id}')"><span class="t">${d.nombre}</span><span class="chev">${isActive ? '▴' : '▾'}</span></div>`
       + (isActive ? `<div id="miEntrenoDiaContent" style="margin-bottom:18px;">${loadingHtml()}</div>` : '');
-  }).join('');
+  }).join(''));
 }
 
 async function renderDiaContent(dia){
@@ -975,8 +980,8 @@ async function renderDiaForDate(){
     : await buildMiEntrenoRunHtml(dia, vEntrenoViewDate, isToday);
   document.getElementById('miEntrenoDiaContent').innerHTML = `
     <div class="inline" style="align-items:flex-end;margin-bottom:16px;">
-      <div class="field" style="width:auto;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:auto;font-weight:600;"></div>
-      ${(isToday && dia.tipo==='gym') ? `<div class="field" style="width:auto;"><label>Duración</label><div style="border:1px solid var(--border);border-radius:4px;padding:9px 10px;font-size:15px;font-weight:600;" id="entrenoDuracion">--:--:--</div></div>` : ''}
+      <div class="field" style="width:auto;"><label>Fecha</label><input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:auto;font-weight:600;height:38px;box-sizing:border-box;"></div>
+      ${(isToday && dia.tipo==='gym') ? `<div class="field" style="width:auto;"><label>Duración</label><div style="border:1px solid var(--border);border-radius:4px;padding:9px 10px;font-size:15px;font-weight:600;height:38px;box-sizing:border-box;display:flex;align-items:center;" id="entrenoDuracion">--:--:--</div></div>` : ''}
     </div>
     ${bodyHtml}
     ${isToday ? `<div class="inline" style="margin-top:18px;">
@@ -1613,11 +1618,12 @@ async function renderNutricionTab(){
       </div>
   `;
 
-  document.getElementById('clienteTabContent').innerHTML =
+  document.getElementById('clienteTabContent').innerHTML = wrapAccordionList(
     accordionSectionHtml('metas', 'Metas diarias', metasBody, false) +
     accordionSectionHtml('registro', 'Registro diario', registroBody, true) +
     accordionSectionHtml('peso', 'Peso corporal', pesoBody, false) +
-    accordionSectionHtml('notas', 'Notas del día', notasBody, false);
+    accordionSectionHtml('notas', 'Notas del día', notasBody, false)
+  );
 
   populateFoodSelect();
   document.getElementById('g_kcal').value = vGoals.kcal ?? '';
@@ -2045,10 +2051,11 @@ async function renderProgresoTab(){
       <div id="fotosGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;"><p class="muted">Cargando…</p></div>
   `;
 
-  document.getElementById('clienteTabContent').innerHTML = `<h2>Progreso</h2>`
-    + accordionSectionHtml('progPeso', 'Peso corporal', pesoBody, false)
+  document.getElementById('clienteTabContent').innerHTML = wrapAccordionList(
+    accordionSectionHtml('progPeso', 'Peso corporal', pesoBody, false)
     + accordionSectionHtml('progEj', 'Ejercicios', ejerciciosBody, false)
-    + accordionSectionHtml('progFotos', 'Fotos', fotosBody, false);
+    + accordionSectionHtml('progFotos', 'Fotos', fotosBody, false)
+  );
 
   // Cargar la gráfica/fotos de cada sección solo la primera vez que se abre
   ['progPeso','progEj','progFotos'].forEach(id=>{
