@@ -19,6 +19,10 @@
     --ink:#111111; --muted:#767672; --faint:#A8A8A3;
     --bg:#FAFAF8; --card:#FFFFFF; --border:#E3E2DD; --surface:#F1F0EC; --amber:#F5F0DC;
   }
+  html.dark{
+    --ink:#F0F0EE; --muted:#9A9A96; --faint:#6B6B68;
+    --bg:#121212; --card:#1C1C1C; --border:#333333; --surface:#232323; --amber:#332D1C;
+  }
   *{box-sizing:border-box;}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Helvetica,Arial,sans-serif;
@@ -273,6 +277,16 @@ const GRUPOS_MUSCULARES = ['Abs','Bíceps','Cuádriceps','Deltoides','Espalda','
 async function init(){
   const { data: { session } } = await sb.auth.getSession();
   if(session){ showDashboard(session); } else { showLogin(); }
+}
+
+function applyTheme(dark){
+  document.documentElement.classList.toggle('dark', !!dark);
+}
+
+async function toggleDarkMode(checked){
+  applyTheme(checked);
+  vCliente.modo_oscuro = checked;
+  await sb.from('clientes').update({ modo_oscuro: checked }).eq('id', vCliente.id);
 }
 
 function setBrandRowVisible(visible){
@@ -801,6 +815,7 @@ async function renderClienteDetail(clienteId, opts){
   if(!alimentosCache){ await loadAlimentos(); }
 
   if(opts.isSelf){
+    applyTheme(!!cliente.modo_oscuro);
     renderClienteHome();
   } else {
     await renderClienteTabsScreen('nutricion');
@@ -822,6 +837,10 @@ function renderClienteHome(){
           <button class="tab-btn" style="flex:1;" onclick="renderClienteTabsScreen('progreso')">Progreso</button>
         </div>
         <div style="margin-top:20px;"><button onclick="logout()" style="background:none;border:none;color:var(--muted);text-decoration:underline;font:inherit;font-size:13px;cursor:pointer;padding:0;">Cerrar sesión</button></div>
+        <label style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:16px;font-size:13px;color:var(--muted);cursor:pointer;">
+          <input type="checkbox" id="darkModeToggle" ${cliente.modo_oscuro ? 'checked' : ''} onchange="toggleDarkMode(this.checked)" style="width:auto;">
+          Modo oscuro
+        </label>
       </div>
     </div>
   `;
