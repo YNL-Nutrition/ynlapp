@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -977,14 +978,14 @@ async function renderDiaForDate(){
     ? await buildMiEntrenoExsHtml(dia, vEntrenoViewDate, isToday)
     : await buildMiEntrenoRunHtml(dia, vEntrenoViewDate, isToday);
   document.getElementById('miEntrenoDiaContent').innerHTML = `
-    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
       <div style="display:flex;flex-direction:column;">
         <label style="font-size:11px;color:var(--muted);margin-bottom:3px;">Fecha</label>
-        <input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:auto;font-weight:600;height:38px;box-sizing:border-box;">
+        <input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:100px;font-weight:600;height:38px;box-sizing:border-box;">
       </div>
       ${(isToday && dia.tipo==='gym') ? `<div style="display:flex;flex-direction:column;">
         <label style="font-size:11px;color:var(--muted);margin-bottom:3px;">Duración</label>
-        <div style="border:1px solid var(--border);border-radius:4px;padding:0 10px;font-size:15px;font-weight:600;height:38px;box-sizing:border-box;display:flex;align-items:center;" id="entrenoDuracion">--:--:--</div>
+        <div style="border:1px solid var(--border);border-radius:4px;padding:0 10px;font-size:15px;font-weight:600;height:38px;width:100px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;" id="entrenoDuracion">--:--:--</div>
       </div>` : ''}
     </div>
     ${bodyHtml}
@@ -1110,10 +1111,13 @@ function entrenoTimerHeaderHtml(){
 }
 
 function restBarHtml(){
+  const running = vRestTimerEnd != null;
+  const slot = running
+    ? `<span id="restCountdown" style="font-size:20px;font-weight:600;min-width:62px;text-align:center;">${formatMinSec(vRestRemainingSeconds)}</span>`
+    : `<input type="number" id="restMin" step="0.5" min="0.5" placeholder="min" value="${vRestRemainingSeconds ? (vRestRemainingSeconds/60) : (vRestDurationSeconds ? vRestDurationSeconds/60 : '')}" style="width:62px;border:none;background:none;font-size:20px;font-weight:600;padding:0;text-align:center;" onchange="setRestDuration(this.value)">`;
   return `<div style="position:fixed;left:20px;right:20px;bottom:calc(16px + env(safe-area-inset-bottom,0px));max-width:380px;margin:0 auto;background:var(--card);border:1px solid var(--border);border-radius:6px;box-shadow:0 -4px 14px rgba(0,0,0,0.1);padding:10px 14px;display:flex;align-items:center;gap:10px;z-index:500;">
     <span class="muted" style="font-size:11px;">Descanso</span>
-    <input type="number" id="restMin" step="0.5" min="0.5" value="${vRestDurationSeconds ? (vRestDurationSeconds/60) : ''}" style="width:50px;padding:6px 8px;font-size:13px;" onchange="setRestDuration(this.value)">
-    <span id="restCountdown" style="font-size:16px;font-weight:600;min-width:46px;">${vRestRemainingSeconds ? formatMinSec(vRestRemainingSeconds) : '--:--'}</span>
+    ${slot}
     <button onclick="playRestTimer()" title="Iniciar" style="background:none;border:none;padding:4px;cursor:pointer;display:flex;">
       <svg width="15" height="15" viewBox="0 0 16 16"><polygon points="3,2 14,8 3,14" fill="#111"/></svg>
     </button>
@@ -1200,7 +1204,7 @@ function pauseRestTimer(){
   vRestRemainingSeconds = Math.max(0, Math.ceil((vRestTimerEnd - Date.now())/1000));
   clearInterval(vRestTimerInterval); vRestTimerInterval = null;
   vRestTimerEnd = null;
-  updateRestDisplay();
+  showRestBar();
 }
 
 function restartRestTimer(){
@@ -1218,6 +1222,7 @@ function tickRestTimer(){
     clearInterval(vRestTimerInterval); vRestTimerInterval = null;
     vRestTimerEnd = null;
     playTimbre();
+    showRestBar();
   }
 }
 
