@@ -22,6 +22,7 @@
   html.dark .loading-state img, html.dark img[alt="YNL"], html.dark img[alt="Inicio"]{ filter:invert(1); }
   .dm-checkbox{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:1.5px solid #111111;border-radius:3px;background:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;position:relative;flex-shrink:0;margin:0;}
   .dm-checkbox:checked::after{content:'✓';color:#111111;font-size:13px;font-weight:700;position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);line-height:1;}
+  .pr-badge{font-size:10px;font-weight:700;border:1px solid var(--ink);border-radius:3px;padding:1px 5px;margin-left:6px;letter-spacing:.03em;}
   html.dark{
     --ink:#F0F0EE; --muted:#9A9A96; --faint:#6B6B68;
     --bg:#121212; --card:#1C1C1C; --border:#333333; --surface:#232323; --amber:#332D1C;
@@ -1079,10 +1080,12 @@ async function buildMiEntrenoExsHtml(dia, viewDate, isToday){
         prevLabel: prevForN ? `${prevForN.peso ?? '—'}kg × ${prevForN.reps ?? '—'}` : 'sin registro previo',
         saved: !!row,
         savedPeso: row ? row.peso : undefined,
-        savedReps: row ? row.reps : undefined
+        savedReps: row ? row.reps : undefined,
+        isPR: false
       });
     }
-    miEntrenoState[re.ejercicio_id] = { re, activeIndex: 0, series, expanded: false };
+    const maxPesoAnterior = Math.max(0, ...hist.map(h=>h.peso).filter(p=>p!=null), 0);
+    miEntrenoState[re.ejercicio_id] = { re, activeIndex: 0, series, expanded: false, maxPesoAnterior };
   });
   const header = entrenoTimerHeaderHtml();
   if(!ejs.length) return '<div id="miEntrenoExs">' + header + '<p class="muted">Este día no tiene ejercicios asignados todavía.</p></div>';
@@ -1093,9 +1096,10 @@ function renderEjercicioWidgetHtml(ej){
   const st = miEntrenoState[ej];
   const re = st.re;
   const allSaved = st.series.every(s=>s.saved);
+  const hasPR = st.series.some(s=>s.isPR);
   const head = `<div class="acc-head" onclick="toggleEjercicioExpand('${ej}')" style="display:flex;justify-content:space-between;align-items:center;padding:14px;cursor:pointer;">
     <div>
-      <div style="font-weight:600;">${re.ejercicios ? re.ejercicios.nombre : '—'}${allSaved ? ' ✓' : ''}</div>
+      <div style="font-weight:600;">${re.ejercicios ? re.ejercicios.nombre : '—'}${allSaved ? ' ✓' : ''}${hasPR ? '<span class="pr-badge">PR</span>' : ''}</div>
       <div class="muted" style="font-size:12px;">${re.ejercicios && re.ejercicios.grupo_muscular ? re.ejercicios.grupo_muscular+' · ' : ''}${st.series.length} serie${st.series.length===1?'':'s'}</div>
     </div>
     <span class="muted" style="font-size:12px;">${st.expanded ? '▴' : '▾'}</span>
@@ -1105,7 +1109,7 @@ function renderEjercicioWidgetHtml(ej){
     return `<div class="card" id="teCard_${ej}" style="margin-bottom:10px;padding:0;">${head}</div>`;
   }
 
-  const tabsHtml = st.series.map((s,i)=>`<div class="te-tab${i===st.activeIndex?' active':''}" onclick="selectSerie('${ej}',${i})">Serie ${i+1}</div>`).join('')
+  const tabsHtml = st.series.map((s,i)=>`<div class="te-tab${i===st.activeIndex?' active':''}" onclick="selectSerie('${ej}',${i})">Serie ${i+1}${s.isPR?' ★':''}</div>`).join('')
     + `<div class="te-tab te-add" onclick="addSerie('${ej}')">+</div>`
     + (st.series.length>1 ? `<div class="te-tab te-remove" onclick="removeSerie('${ej}')">✕</div>` : '');
   const cur = st.series[st.activeIndex];
@@ -1120,6 +1124,7 @@ function renderEjercicioWidgetHtml(ej){
       </div>
       <div class="te-refs" style="margin-bottom:12px;">
         <div><span class="k">Última vez</span><span class="v">${cur.prevLabel}</span></div>
+        ${cur.isPR ? `<span class="pr-badge">¡Nuevo PR!</span>` : ''}
       </div>
       <button class="te-save${cur.saved ? ' saved' : ''}" style="width:100%;" onclick="guardarSerie('${ej}')">${cur.saved ? 'Guardado ✓' : '✓'}</button>
     </div>
@@ -1303,9 +1308,16 @@ async function guardarSerie(ej){
     await sb.from('registro_entreno').insert({ cliente_id: vCliente.id, fecha: today, dia_id: dia.id, ejercicio_id: ej, numero_serie: idx+1, peso: s.peso, reps: s.reps });
     s.saved = true;
     s.savedPeso = s.peso; s.savedReps = s.reps;
+    if(s.peso != null && s.peso > st.maxPesoAnterior){
+      s.isPR = true;
+      st.maxPesoAnterior = s.peso;
+    } else {
+      s.isPR = false;
+    }
     autoStartRestAfterSerie();
   } else {
     s.saved = false;
+    s.isPR = false;
   }
   if(idx + 1 < st.series.length) st.activeIndex = idx + 1;
   refreshEjercicioWidget(ej);
@@ -2217,8 +2229,13 @@ function renderProgresoExChart(ejercicioId){
     if(!byFecha[r.fecha] || r.peso > byFecha[r.fecha]) byFecha[r.fecha] = r.peso;
   });
   const fechas = Object.keys(byFecha).sort();
+  const valores = fechas.map(f=>byFecha[f]);
+  const maxVal = Math.max(...valores);
   const isMobile = window.matchMedia('(max-width:640px)').matches;
-  progresoExChartObj = new Chart(ctx, { type:'line', data:{ labels: fechas.map(f=> new Date(f+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'})), datasets:[{ label:'Peso máx. (kg)', data: fechas.map(f=>byFecha[f]), borderColor:themeInk(), backgroundColor:themeInk(), tension:0.25, pointRadius:4 }]}, options:{ maintainAspectRatio: !isMobile, plugins:{legend:{display:false}} } });
+  progresoExChartObj = new Chart(ctx, { type:'line', data:{ labels: fechas.map(f=> new Date(f+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'})), datasets:[{ label:'Peso máx. (kg)', data: valores, borderColor:themeInk(), backgroundColor:themeInk(),
+    pointBackgroundColor: valores.map(v=> v===maxVal ? '#D9A72E' : themeInk()),
+    pointRadius: valores.map(v=> v===maxVal ? 6 : 4),
+    tension:0.25 }]}, options:{ maintainAspectRatio: !isMobile, plugins:{legend:{display:false}} } });
 }
 
 function renderWeightChart(){
