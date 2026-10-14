@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -230,9 +231,9 @@
 <!-- ===================== MODAL: PLANTILLA DE COMIDA ===================== -->
 <div class="modal-bg" id="plModalBg">
   <div class="modal" style="width:560px;">
-    <h1 style="font-size:16px;">Nueva plantilla de comida</h1>
+    <h1 style="font-size:16px;">Nuevo favorito</h1>
     <label>Nombre</label>
-    <input type="text" id="pl_nombre" placeholder="Ej. Desayuno de avena">
+    <input type="text" id="pl_nombre" placeholder="Ej. Avena con banano">
     <div id="plDraftRows" style="margin-top:10px;"></div>
     <div style="margin-top:8px;"><button class="secondary small" onclick="addPlantillaRow()">+ Agregar alimento</button></div>
     <div class="modal-actions">
@@ -1653,6 +1654,14 @@ async function renderNutricionTab(){
       <div class="scroll"><table><thead><tr><th>Alimento</th><th>Porción</th><th>Kcal</th><th>Prot</th><th>Carb</th><th>Grasa</th><th>Fibra</th><th></th></tr></thead>
       <tbody id="logTableBody"><tr><td colspan="8" class="muted">Cargando…</td></tr></tbody></table></div>
 
+      <div data-html2canvas-ignore="true">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px;">
+          <h2 style="margin:0;">Favoritos</h2>
+          <button class="small secondary" onclick="openPlantillaModal()">+ Nueva</button>
+        </div>
+        <div id="plantillasList">${renderPlantillasListHtml()}</div>
+      </div>
+
       <h2>Progreso del día</h2>
       <div id="progressWrap"></div>
       <div class="charts-row">
@@ -1690,19 +1699,11 @@ async function renderNutricionTab(){
       </div>
   `;
 
-  const plantillasBody = `
-      <div style="max-width:700px;">
-        <div style="margin-bottom:12px;"><button onclick="openPlantillaModal()">+ Nueva plantilla</button></div>
-        <div id="plantillasList">${renderPlantillasListHtml()}</div>
-      </div>
-  `;
-
   document.getElementById('clienteTabContent').innerHTML = wrapAccordionList(
     accordionSectionHtml('metas', 'Metas diarias', metasBody, false) +
     accordionSectionHtml('registro', 'Registro diario', registroBody, false) +
     accordionSectionHtml('peso', 'Peso corporal', pesoBody, false) +
-    accordionSectionHtml('notas', 'Notas del día', notasBody, false) +
-    accordionSectionHtml('plantillas', 'Plantillas de comida', plantillasBody, false)
+    accordionSectionHtml('notas', 'Notas del día', notasBody, false)
   );
 
   populateFoodSelect();
@@ -1903,26 +1904,39 @@ function plItemCalc(it){
     grasa: food.grasa*factor, fibra: food.fibra*factor };
 }
 
+let vPlantillaOpenId = null;
+
 function renderPlantillasListHtml(){
-  if(!vPlantillas.length) return '<p class="muted">Aún no hay plantillas. Crea una con “+ Nueva plantilla”.</p>';
-  return vPlantillas.map(p=>{
+  if(!vPlantillas.length) return '<p class="muted" style="margin:0;">Aún no tienes favoritos. Crea uno con “+ Nueva”.</p>';
+  const chips = vPlantillas.map(p=>{
+    const on = p.id===vPlantillaOpenId;
+    return `<div onclick="togglePlantillaChip('${p.id}')" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;font-size:13px;padding:8px 14px;background:var(--card);border:1px solid ${on?'var(--ink)':'var(--border)'};border-radius:4px;${on?'font-weight:600;':''}">${escHtml(p.nombre)}</div>`;
+  }).join('');
+  let detail = '';
+  const p = vPlantillas.find(x=>x.id===vPlantillaOpenId);
+  if(p){
     const items = (p.plantilla_items||[]).slice().sort((a,b)=>(a.orden||0)-(b.orden||0));
     const calcs = items.map(plItemCalc).filter(Boolean);
     const tot = calcs.reduce((a,c)=>({kcal:a.kcal+c.kcal,prot:a.prot+c.proteina,carb:a.carb+c.carbohidratos,grasa:a.grasa+c.grasa}), {kcal:0,prot:0,carb:0,grasa:0});
     const lines = calcs.map(c=>`${escHtml(c.food.nombre)} · ${escHtml(c.label)}`).join('<br>');
-    return `<div class="card" style="padding:14px;margin:0 0 10px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
-        <b>${escHtml(p.nombre)}</b>
-        <span style="font-size:12px;">${Math.round(tot.kcal)} kcal · <span style="color:#D64545;">P ${round1(tot.prot)}</span> · <span style="color:#3B6EA5;">C ${round1(tot.carb)}</span> · <span style="color:#D9A72E;">G ${round1(tot.grasa)}</span></span>
-      </div>
-      <div class="muted" style="font-size:12px;margin:8px 0;">${lines || 'Sin alimentos'}</div>
+    const curMeal = (document.getElementById('entryMeal')||{}).value || 'Desayuno';
+    const mealOpts = ['Desayuno','Almuerzo','Cena','Snack'].map(m=>`<option${m===curMeal?' selected':''}>${m}</option>`).join('');
+    detail = `<div style="margin-top:10px;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:6px;">
+      <div style="font-size:12px;margin-bottom:8px;">${Math.round(tot.kcal)} kcal · <span style="color:#D64545;">P ${round1(tot.prot)}</span> · <span style="color:#3B6EA5;">C ${round1(tot.carb)}</span> · <span style="color:#D9A72E;">G ${round1(tot.grasa)}</span></div>
+      <div class="muted" style="font-size:12px;margin-bottom:10px;">${lines || 'Sin alimentos'}</div>
       <div class="inline">
-        <select id="plMeal_${p.id}" style="width:auto;"><option>Desayuno</option><option>Almuerzo</option><option>Cena</option><option>Snack</option></select>
+        <select id="plMeal_${p.id}" style="width:auto;">${mealOpts}</select>
         <button class="small" onclick="aplicarPlantilla('${p.id}')">Aplicar al día</button>
         <button class="small secondary" onclick="eliminarPlantilla('${p.id}')">Eliminar</button>
       </div>
     </div>`;
-  }).join('');
+  }
+  return `<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;">${chips}</div>${detail}`;
+}
+
+function togglePlantillaChip(id){
+  vPlantillaOpenId = (vPlantillaOpenId===id) ? null : id;
+  refreshPlantillasList();
 }
 
 function refreshPlantillasList(){
@@ -1944,19 +1958,20 @@ async function aplicarPlantilla(id){
     cliente_id: vCliente.id, fecha: vDate, comida: meal, alimento: c.food.nombre, porcion: c.label,
     kcal: c.kcal, proteina: c.proteina, carbohidratos: c.carbohidratos, grasa: c.grasa, fibra: c.fibra,
   }));
-  if(!rows.length){ alert('Esta plantilla no tiene alimentos válidos.'); return; }
+  if(!rows.length){ alert('Este favorito no tiene alimentos válidos.'); return; }
   const { error } = await sb.from('registro').insert(rows);
   if(error){ alert('No se pudo aplicar: '+error.message); return; }
   await loadLogForDate(vDate);
-  alert(`Plantilla aplicada a ${meal} (${vDate}).`);
+  alert(`Favorito aplicado a ${meal} (${vDate}).`);
 }
 
 async function eliminarPlantilla(id){
   const p = vPlantillas.find(x=>x.id===id);
-  if(!p || !confirm(`¿Eliminar la plantilla “${p.nombre}”?`)) return;
+  if(!p || !confirm(`¿Eliminar el favorito “${p.nombre}”?`)) return;
   const { error } = await sb.from('plantillas_comida').delete().eq('id', id);
   if(error){ alert('No se pudo eliminar: '+error.message); return; }
   vPlantillas = vPlantillas.filter(x=>x.id!==id);
+  if(vPlantillaOpenId===id) vPlantillaOpenId = null;
   refreshPlantillasList();
 }
 
@@ -2011,7 +2026,7 @@ function updPlantillaRow(i, field, val, silent){
 async function savePlantilla(){
   const err = document.getElementById('plModalErr'); err.textContent = '';
   const nombre = document.getElementById('pl_nombre').value.trim();
-  if(!nombre){ err.textContent = 'Ponle un nombre a la plantilla.'; return; }
+  if(!nombre){ err.textContent = 'Ponle un nombre al favorito.'; return; }
   if(!vPlantillaDraftItems.length){ err.textContent = 'Agrega al menos un alimento.'; return; }
   for(const it of vPlantillaDraftItems){
     const q = parseFloat(it.cantidad);
@@ -2437,7 +2452,7 @@ window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; wind
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
 window.openPlantillaModal=openPlantillaModal; window.closePlantillaModal=closePlantillaModal; window.savePlantilla=savePlantilla;
 window.addPlantillaRow=addPlantillaRow; window.removePlantillaRow=removePlantillaRow; window.updPlantillaRow=updPlantillaRow;
-window.aplicarPlantilla=aplicarPlantilla; window.eliminarPlantilla=eliminarPlantilla; window.refreshPlantillasList=refreshPlantillasList;
+window.togglePlantillaChip=togglePlantillaChip; window.aplicarPlantilla=aplicarPlantilla; window.eliminarPlantilla=eliminarPlantilla; window.refreshPlantillasList=refreshPlantillasList;
 window.saveProfileNote=saveProfileNote; window.deleteNote=deleteNote;
 window.addWeight=addWeight; window.deleteWeight=deleteWeight; window.downloadMenu=downloadMenu;
 
