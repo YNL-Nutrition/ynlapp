@@ -1655,8 +1655,8 @@ async function renderNutricionTab(){
 
       <div data-html2canvas-ignore="true">
         <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px;">
-          <h2 style="margin:0;">Favoritos</h2>
-          <button class="small secondary" onclick="openPlantillaModal()">+ Nueva</button>
+          <h2 style="margin:0;line-height:1;">Favoritos</h2>
+          <button onclick="openPlantillaModal()">+ Agregar</button>
         </div>
         <div id="plantillasList">${renderPlantillasListHtml()}</div>
       </div>
@@ -1906,28 +1906,34 @@ function plItemCalc(it){
 let vPlantillaOpenId = null;
 
 function renderPlantillasListHtml(){
-  if(!vPlantillas.length) return '<p class="muted" style="margin:0;">Aún no tienes favoritos. Crea uno con “+ Nueva”.</p>';
+  if(!vPlantillas.length) return '<p class="muted" style="margin:0;">Aún no tienes favoritos. Crea uno con “+ Agregar”.</p>';
   const chips = vPlantillas.map(p=>{
     const on = p.id===vPlantillaOpenId;
-    return `<div onclick="togglePlantillaChip('${p.id}')" style="flex:0 0 auto;cursor:pointer;white-space:nowrap;font-size:13px;padding:8px 14px;background:var(--card);border:1px solid ${on?'var(--ink)':'var(--border)'};border-radius:4px;${on?'font-weight:600;':''}">${escHtml(p.nombre)}</div>`;
+    return `<div onclick="togglePlantillaChip('${p.id}')" title="${escHtml(p.nombre)}" style="flex:0 0 150px;width:150px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;font-size:14px;padding:10px 12px;background:var(--card);border:1px solid ${on?'var(--ink)':'var(--border)'};border-radius:4px;${on?'font-weight:600;':''}">${escHtml(p.nombre)}</div>`;
   }).join('');
   let detail = '';
   const p = vPlantillas.find(x=>x.id===vPlantillaOpenId);
   if(p){
     const items = (p.plantilla_items||[]).slice().sort((a,b)=>(a.orden||0)-(b.orden||0));
     const calcs = items.map(plItemCalc).filter(Boolean);
-    const tot = calcs.reduce((a,c)=>({kcal:a.kcal+c.kcal,prot:a.prot+c.proteina,carb:a.carb+c.carbohidratos,grasa:a.grasa+c.grasa}), {kcal:0,prot:0,carb:0,grasa:0});
-    const lines = calcs.map(c=>`${escHtml(c.food.nombre)} · ${escHtml(c.label)}`).join('<br>');
+    const tot = calcs.reduce((a,c)=>({kcal:a.kcal+c.kcal,prot:a.prot+c.proteina,carb:a.carb+c.carbohidratos,grasa:a.grasa+c.grasa,fibra:a.fibra+c.fibra}), {kcal:0,prot:0,carb:0,grasa:0,fibra:0});
+    const lines = calcs.map(c=>`<div>${escHtml(c.food.nombre)} · ${escHtml(c.label)}</div>`).join('');
     const curMeal = (document.getElementById('entryMeal')||{}).value || 'Desayuno';
     const mealOpts = ['Desayuno','Almuerzo','Cena','Snack'].map(m=>`<option${m===curMeal?' selected':''}>${m}</option>`).join('');
-    detail = `<div style="margin-top:10px;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:6px;">
-      <div style="font-size:12px;margin-bottom:8px;">${Math.round(tot.kcal)} kcal · <span style="color:#D64545;">P ${round1(tot.prot)}</span> · <span style="color:#3B6EA5;">C ${round1(tot.carb)}</span> · <span style="color:#D9A72E;">G ${round1(tot.grasa)}</span></div>
-      <div class="muted" style="font-size:12px;margin-bottom:10px;">${lines || 'Sin alimentos'}</div>
-      <div class="inline">
-        <select id="plMeal_${p.id}" style="width:auto;">${mealOpts}</select>
-        <button class="small" onclick="aplicarPlantilla('${p.id}')">Aplicar al día</button>
-        <button class="small secondary" onclick="eliminarPlantilla('${p.id}')">Eliminar</button>
+    detail = `<div style="margin-top:10px;padding:14px;background:var(--card);border:1px solid var(--border);border-radius:6px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 16px;align-items:start;">
+      <div class="muted" style="overflow-x:auto;white-space:nowrap;font-size:13px;line-height:1.7;">${lines || 'Sin alimentos'}</div>
+      <div style="text-align:right;font-size:13px;line-height:1.6;white-space:nowrap;">
+        <div>${Math.round(tot.kcal)} Kcal</div>
+        <div style="color:#D64545;">${round1(tot.prot)} P</div>
+        <div style="color:#3B6EA5;">${round1(tot.carb)} C</div>
+        <div style="color:#D9A72E;">${round1(tot.grasa)} G</div>
+        <div style="color:#4C8C5C;">${round1(tot.fibra)} F</div>
       </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <select id="plMeal_${p.id}" style="width:auto;">${mealOpts}</select>
+        <button onclick="aplicarPlantilla('${p.id}')">Aplicar al día</button>
+      </div>
+      <div style="text-align:right;"><button class="secondary" onclick="eliminarPlantilla('${p.id}')">Eliminar</button></div>
     </div>`;
   }
   return `<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;">${chips}</div>${detail}`;
@@ -2459,4 +2465,3 @@ init();
 </script>
 </body>
 </html>
-
