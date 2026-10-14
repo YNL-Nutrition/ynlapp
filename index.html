@@ -68,6 +68,8 @@
   button.secondary{background:none;color:var(--ink);border:1px solid var(--ink);}
   button.secondary:hover{background:var(--surface);}
   button.small{font-size:12px;padding:5px 9px;}
+  .icon-btn{background:none;border:none;color:var(--ink);font-size:18px;line-height:1;padding:4px 7px;cursor:pointer;}
+  .icon-btn:hover{background:none;color:var(--muted);}
   .card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:22px;margin:0 auto 16px;max-width:1200px;width:100%;}
   .card.narrow{max-width:420px;}
   .row{display:flex;flex-direction:column;gap:10px;max-width:360px;}
@@ -224,6 +226,24 @@
       <button id="reModalSaveBtn" onclick="saveRutinaEjercicio()">Guardar</button>
     </div>
     <p class="error" id="reModalErr"></p>
+  </div>
+</div>
+
+<!-- ===================== MODAL: EDITAR ALIMENTO REGISTRADO ===================== -->
+<div class="modal-bg" id="eeModalBg">
+  <div class="modal" style="width:460px;">
+    <h1 style="font-size:16px;">Editar alimento</h1>
+    <div class="field"><label>Alimento</label><select id="ee_food" onchange="onEditEntryFoodChange()"></select></div>
+    <div class="grid2">
+      <div class="field"><label id="ee_qtyLabel">Porción (g)</label><input type="number" step="any" min="0" id="ee_qty" value="100"></div>
+      <div class="field" id="ee_modeWrap" style="display:none;"><label>Modo</label><select id="ee_mode" onchange="onEditEntryModeChange()"></select></div>
+    </div>
+    <div class="field"><label>Comida</label><select id="ee_meal"><option>Desayuno</option><option>Almuerzo</option><option>Cena</option><option>Snack</option></select></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="closeEditEntry()">Cancelar</button>
+      <button id="eeSaveBtn" onclick="saveEditEntry()">Guardar cambios</button>
+    </div>
+    <p class="error" id="eeModalErr"></p>
   </div>
 </div>
 
@@ -488,7 +508,7 @@ function renderFoodRows(list){
   Object.keys(byCat).forEach(cat=>{
     html += `<tr><td colspan="7" class="cat-header">${cat}</td></tr>`;
     byCat[cat].forEach(f=>{
-      html += `<tr><td>${f.nombre}${f.unidad_label ? `<br><span class="muted">1 ${f.unidad_label} ≈ ${f.unidad_gramos} g</span>` : ''}</td><td>${f.kcal}</td><td>${f.proteina}</td><td>${f.carbohidratos}</td><td>${f.grasa}</td><td>${f.fibra}</td><td style="white-space:nowrap;"><button class="small secondary" title="Editar" onclick="openEditFood('${f.id}')">✎</button> <button class="small secondary" title="Eliminar" onclick="confirmDeleteFood('${f.id}')">✕</button></td></tr>`;
+      html += `<tr><td>${f.nombre}${f.unidad_label ? `<br><span class="muted">1 ${f.unidad_label} ≈ ${f.unidad_gramos} g</span>` : ''}</td><td>${f.kcal}</td><td>${f.proteina}</td><td>${f.carbohidratos}</td><td>${f.grasa}</td><td>${f.fibra}</td><td style="white-space:nowrap;"><button class="icon-btn" title="Editar" onclick="openEditFood('${f.id}')">✎</button> <button class="icon-btn" title="Eliminar" onclick="confirmDeleteFood('${f.id}')">✕</button></td></tr>`;
     });
   });
   document.getElementById('foodTableBody').innerHTML = html || '<tr><td colspan="7" class="muted">Sin resultados.</td></tr>';
@@ -655,7 +675,7 @@ function renderEjercicioRows(list){
   Object.keys(byGrupo).forEach(g=>{
     html += `<tr><td colspan="3" class="cat-header">${g}</td></tr>`;
     byGrupo[g].forEach(e=>{
-      html += `<tr><td>${e.nombre}</td><td>${e.video_url ? `<a href="${e.video_url}" target="_blank">Ver</a>` : '—'}</td><td style="white-space:nowrap;"><button class="small secondary" title="Editar" onclick="openEditExercise('${e.id}')">✎</button> <button class="small secondary" title="Eliminar" onclick="confirmDeleteExercise('${e.id}')">✕</button></td></tr>`;
+      html += `<tr><td>${e.nombre}</td><td>${e.video_url ? `<a href="${e.video_url}" target="_blank">Ver</a>` : '—'}</td><td style="white-space:nowrap;"><button class="icon-btn" title="Editar" onclick="openEditExercise('${e.id}')">✎</button> <button class="icon-btn" title="Eliminar" onclick="confirmDeleteExercise('${e.id}')">✕</button></td></tr>`;
     });
   });
   document.getElementById('exTableBody').innerHTML = html || '<tr><td colspan="3" class="muted">Sin resultados.</td></tr>';
@@ -1456,15 +1476,15 @@ function renderRutinaBuilder(){
       <div class="inline" style="align-items:center;">
         <div><strong>${d.orden}. ${d.nombre}</strong> <span class="muted">(${d.tipo==='gym'?'Gym':'Running'})</span></div>
         <div style="display:flex;gap:6px;">
-          <button class="small secondary" title="Editar" onclick="openDiaModal('${d.id}')">✎</button>
-          <button class="small secondary" title="Eliminar" onclick="confirmDeleteDia('${d.id}')">✕</button>
+          <button class="icon-btn" title="Editar" onclick="openDiaModal('${d.id}')">✎</button>
+          <button class="icon-btn" title="Eliminar" onclick="confirmDeleteDia('${d.id}')">✕</button>
         </div>
       </div>`;
     if(d.tipo === 'gym'){
       html += `<div class="scroll" style="margin-top:10px;"><table><thead><tr><th>Ejercicio</th><th>Series</th><th>Reps</th><th>Peso sug.</th><th>Notas</th><th></th></tr></thead><tbody>`;
       (d.ejercicios||[]).forEach(re=>{
         html += `<tr><td>${re.ejercicios ? re.ejercicios.nombre : '—'}</td><td>${re.series ?? '—'}</td><td>${re.reps_objetivo ?? '—'}</td><td>${re.peso_sugerido ?? '—'}</td><td>${re.notas ?? '—'}</td>
-          <td style="white-space:nowrap;"><button class="small secondary" title="Editar" onclick="openRutinaEjercicioModal('${d.id}','${re.id}')">✎</button> <button class="small secondary" title="Eliminar" onclick="confirmDeleteRutinaEjercicio('${re.id}')">✕</button></td></tr>`;
+          <td style="white-space:nowrap;"><button class="icon-btn" title="Editar" onclick="openRutinaEjercicioModal('${d.id}','${re.id}')">✎</button> <button class="icon-btn" title="Eliminar" onclick="confirmDeleteRutinaEjercicio('${re.id}')">✕</button></td></tr>`;
       });
       html += `</tbody></table></div>
       <div style="margin-top:8px;"><button class="small secondary" onclick="openRutinaEjercicioModal('${d.id}')">+ Agregar ejercicio</button></div>`;
@@ -1473,7 +1493,73 @@ function renderRutinaBuilder(){
     }
     html += `</div>`;
   });
+  html += `<h2 style="margin-top:28px;">Historial de ${escHtml(vCliente.nombre)}</h2><div id="trainerHistorial">${loadingHtml()}</div>`;
   document.getElementById('clienteTabContent').innerHTML = html;
+  loadTrainerHistorial();
+}
+
+// ---------- Vista del entrenador: lo que ha hecho el asesorado ----------
+let vTrainerHist = { gym: [], run: [] };
+function histFecha(d){ return String(d).split('-').reverse().join('/'); }
+function histDiaNombre(id){ const x = vRutinaDias.find(v=>v.id===id); return x ? x.nombre : 'Entrenamiento'; }
+
+async function loadTrainerHistorial(){
+  const box = document.getElementById('trainerHistorial'); if(!box) return;
+  const [gym, run] = await Promise.all([
+    sb.from('registro_entreno').select('*, ejercicios(nombre, grupo_muscular)').eq('cliente_id', vCliente.id).order('fecha', { ascending:false }).order('numero_serie'),
+    sb.from('registro_running').select('*').eq('cliente_id', vCliente.id).order('fecha', { ascending:false })
+  ]);
+  const error = gym.error || run.error;
+  if(error){ box.innerHTML = `<p class="muted">No se pudo cargar el historial: ${escHtml(error.message)}</p>`; return; }
+  vTrainerHist = { gym: gym.data || [], run: run.data || [] };
+  const all = vTrainerHist.gym.concat(vTrainerHist.run);
+  const dates = [...new Set(all.map(r=>r.fecha))].sort().reverse();
+  if(!dates.length){ box.innerHTML = '<p class="muted">Aún no hay entrenamientos registrados.</p>'; return; }
+  box.innerHTML = `<div class="field" style="max-width:320px;"><label>Fecha</label>
+      <select id="trainerHistDate" onchange="renderTrainerHistDay()">${dates.map(d=>{
+        const names = [...new Set(all.filter(r=>r.fecha===d).map(r=>histDiaNombre(r.dia_id)))].join(', ');
+        return `<option value="${d}">${histFecha(d)} · ${escHtml(names)}</option>`;
+      }).join('')}</select></div>
+    <div id="trainerHistDay" style="margin-top:12px;"></div>`;
+  renderTrainerHistDay();
+}
+
+function renderTrainerHistDay(){
+  const sel = document.getElementById('trainerHistDate'); if(!sel) return;
+  const d = sel.value;
+  const gym = vTrainerHist.gym.filter(r=>r.fecha===d);
+  const run = vTrainerHist.run.filter(r=>r.fecha===d);
+  const byDia = {};
+  gym.forEach(r=>{ (byDia[r.dia_id]=byDia[r.dia_id]||[]).push(r); });
+  let html = '';
+  Object.keys(byDia).forEach(diaId=>{
+    const dia = vRutinaDias.find(v=>v.id===diaId);
+    const order = {};
+    ((dia && dia.ejercicios) || []).forEach((re,i)=>{ order[re.ejercicio_id] = i; });
+    const byEj = {};
+    byDia[diaId].forEach(r=>{ (byEj[r.ejercicio_id]=byEj[r.ejercicio_id]||[]).push(r); });
+    const ejIds = Object.keys(byEj).sort((a,b)=>(order[a] ?? 999)-(order[b] ?? 999));
+    html += `<div class="card" style="margin-bottom:14px;padding:14px;"><strong>${escHtml(histDiaNombre(diaId))}</strong>` + ejIds.map(id=>{
+      const rows = byEj[id].sort((a,b)=>a.numero_serie-b.numero_serie);
+      const ej = rows[0].ejercicios;
+      return `<div style="margin-top:14px;">
+        <div style="font-weight:600;font-size:14px;">${escHtml(ej ? ej.nombre : '')}</div>
+        ${ej && ej.grupo_muscular ? `<div class="muted" style="font-size:12px;">${escHtml(ej.grupo_muscular)}</div>` : ''}
+        <div class="scroll"><table><thead><tr><th>Serie</th><th>Peso (kg)</th><th>Reps</th></tr></thead><tbody>
+          ${rows.map(r=>`<tr><td>${r.numero_serie}</td><td>${r.peso ?? ''}</td><td>${r.reps ?? ''}</td></tr>`).join('')}
+        </tbody></table></div>
+      </div>`;
+    }).join('') + '</div>';
+  });
+  run.forEach(r=>{
+    html += `<div class="card" style="margin-bottom:14px;padding:14px;"><strong>${escHtml(histDiaNombre(r.dia_id))}</strong> <span class="muted">(Running)</span>
+      <div class="scroll"><table><thead><tr><th>Distancia</th><th>Tiempo</th><th>Pace</th><th>FC prom.</th><th>Cadencia</th></tr></thead><tbody>
+        <tr><td>${r.distancia_km ?? ''} km</td><td>${r.tiempo_min ?? ''} min</td><td>${escHtml(r.pace ?? '')}</td><td>${r.fc_promedio ?? ''}</td><td>${r.cadencia ?? ''}</td></tr>
+      </tbody></table></div>
+      ${r.notas ? `<div class="muted" style="font-size:12px;margin-top:8px;">${escHtml(r.notas)}</div>` : ''}
+    </div>`;
+  });
+  document.getElementById('trainerHistDay').innerHTML = html || '<p class="muted">Sin registros este día.</p>';
 }
 
 let editingDiaId = null;
@@ -1886,6 +1972,95 @@ async function deleteEntry(id){
   await loadLogForDate(vDate);
 }
 
+// ---------- Editar alimento registrado ----------
+let editingEntryId = null;
+function eeBuildMode(food, mode){
+  const wrap = document.getElementById('ee_modeWrap');
+  const sel = document.getElementById('ee_mode');
+  if(food && food.unidad_label){
+    wrap.style.display = '';
+    sel.innerHTML = `<option value="g">Gramos</option><option value="unidad">${escHtml(capitalize(food.unidad_label))}</option>`;
+    sel.value = mode;
+  } else {
+    wrap.style.display = 'none';
+    sel.innerHTML = '<option value="g">Gramos</option>';
+    sel.value = 'g';
+  }
+  document.getElementById('ee_qtyLabel').textContent = (food && food.unidad_label && sel.value==='unidad') ? 'Cantidad' : 'Porción (g)';
+}
+function openEditEntry(id){
+  const e = vEntries.find(x=>x.id===id); if(!e) return;
+  editingEntryId = id;
+  const err = document.getElementById('eeModalErr'); err.textContent = '';
+  const byCat = {};
+  (alimentosCache||[]).forEach(f=>{ (byCat[f.categoria]=byCat[f.categoria]||[]).push(f); });
+  document.getElementById('ee_food').innerHTML = Object.keys(byCat).map(cat=>`<optgroup label="${escHtml(cat)}">${byCat[cat].map(f=>`<option value="${f.id}">${escHtml(f.nombre)}</option>`).join('')}</optgroup>`).join('');
+  const food = (alimentosCache||[]).find(f=>f.nombre===e.alimento);
+  const porcion = String(e.porcion||'');
+  let qty = parseFloat(porcion.replace(',','.'));
+  let mode = 'g';
+  if(food){
+    document.getElementById('ee_food').value = food.id;
+    if(food.unidad_label && /\(\s*[\d.]+\s*g\s*\)\s*$/.test(porcion)) mode = 'unidad';
+  } else {
+    err.textContent = 'No encontré el alimento original en la lista. Elige uno y revisa la cantidad.';
+  }
+  const cur = (alimentosCache||[]).find(f=>f.id===document.getElementById('ee_food').value);
+  eeBuildMode(cur, mode);
+  document.getElementById('ee_qty').value = isNaN(qty) ? 100 : qty;
+  document.getElementById('ee_meal').value = e.comida;
+  document.getElementById('eeModalBg').classList.add('show');
+}
+function closeEditEntry(){ document.getElementById('eeModalBg').classList.remove('show'); }
+function onEditEntryFoodChange(){
+  const food = (alimentosCache||[]).find(f=>f.id===document.getElementById('ee_food').value);
+  eeBuildMode(food, 'g');
+  document.getElementById('ee_qty').value = 100;
+}
+function onEditEntryModeChange(){
+  const food = (alimentosCache||[]).find(f=>f.id===document.getElementById('ee_food').value);
+  const mode = document.getElementById('ee_mode').value;
+  document.getElementById('ee_qty').value = mode==='unidad' ? 1 : 100;
+  document.getElementById('ee_qtyLabel').textContent = (food && mode==='unidad') ? 'Cantidad' : 'Porción (g)';
+}
+async function saveEditEntry(){
+  const err = document.getElementById('eeModalErr'); err.textContent = '';
+  const e = vEntries.find(x=>x.id===editingEntryId); if(!e) return;
+  const food = (alimentosCache||[]).find(f=>f.id===document.getElementById('ee_food').value);
+  const rawVal = parseFloat(document.getElementById('ee_qty').value);
+  const mode = document.getElementById('ee_mode').value;
+  const meal = document.getElementById('ee_meal').value;
+  if(!food || isNaN(rawVal) || rawVal<=0){ err.textContent = 'Selecciona un alimento y una porción válida.'; return; }
+  const useUnit = !!(food.unidad_label && mode==='unidad');
+  const portionG = useUnit ? rawVal*food.unidad_gramos : rawVal;
+  const portionLabel = useUnit ? `${rawVal} ${food.unidad_label}${rawVal!=1?'s':''} (${round1(portionG)} g)` : `${portionG} g`;
+  const factor = portionG/100;
+  const payload = {
+    comida: meal, alimento: food.nombre, porcion: portionLabel,
+    kcal: food.kcal*factor, proteina: food.proteina*factor, carbohidratos: food.carbohidratos*factor,
+    grasa: food.grasa*factor, fibra: food.fibra*factor,
+  };
+  const btn = document.getElementById('eeSaveBtn'); btn.disabled = true;
+  let ok = false;
+  const up = await sb.from('registro').update(payload).eq('id', e.id).select();
+  if(!up.error && up.data && up.data.length){ ok = true; }
+  else {
+    // Respaldo: insertar la fila corregida (misma fecha y orden) y luego borrar la anterior
+    const ins = await sb.from('registro').insert({ cliente_id: e.cliente_id, fecha: e.fecha, created_at: e.created_at, ...payload });
+    if(!ins.error){
+      const del = await sb.from('registro').delete().eq('id', e.id);
+      ok = !del.error;
+      if(del.error) err.textContent = 'Se guardó la versión nueva pero no se pudo quitar la anterior: '+del.error.message;
+    } else {
+      err.textContent = 'No se pudo guardar: '+ins.error.message;
+    }
+  }
+  btn.disabled = false;
+  if(!ok) return;
+  closeEditEntry();
+  await loadLogForDate(vDate);
+}
+
 // ---------- Plantillas de comida ----------
 function plItemCalc(it){
   const food = (alimentosCache||[]).find(f=>String(f.id)===String(it.alimento_id));
@@ -2000,7 +2175,7 @@ function renderPlantillaDraft(){
       <select style="flex:1;min-width:0;" onchange="updPlantillaRow(${i},'alimento_id',this.value)">${opts}</select>
       <input type="number" step="any" min="0" style="width:80px;" value="${it.cantidad}" oninput="updPlantillaRow(${i},'cantidad',this.value,true)">
       ${modeSel}
-      <button class="small secondary" onclick="removePlantillaRow(${i})">×</button>
+      <button class="icon-btn" onclick="removePlantillaRow(${i})">×</button>
     </div>`;
   }).join('');
 }
@@ -2057,7 +2232,7 @@ function renderLog(){
     if(items.length===0) return;
     html += `<tr><td colspan="8" class="meal-header">${meal}</td></tr>`;
     items.forEach(e=>{
-      html += `<tr><td>${e.alimento}</td><td>${e.porcion}</td><td>${Math.round(e.kcal)}</td><td>${round1(e.proteina)}</td><td>${round1(e.carbohidratos)}</td><td>${round1(e.grasa)}</td><td>${round1(e.fibra)}</td><td><button class="small secondary" onclick="deleteEntry('${e.id}')">×</button></td></tr>`;
+      html += `<tr><td>${e.alimento}</td><td>${e.porcion}</td><td>${Math.round(e.kcal)}</td><td>${round1(e.proteina)}</td><td>${round1(e.carbohidratos)}</td><td>${round1(e.grasa)}</td><td>${round1(e.fibra)}</td><td style="white-space:nowrap;"><button class="icon-btn" title="Editar" onclick="openEditEntry('${e.id}')">✎</button><button class="icon-btn" title="Eliminar" onclick="deleteEntry('${e.id}')">×</button></td></tr>`;
     });
     const sub = items.reduce((a,e)=>({kcal:a.kcal+e.kcal,prot:a.prot+e.proteina,carb:a.carb+e.carbohidratos,grasa:a.grasa+e.grasa,fibra:a.fibra+e.fibra}), {kcal:0,prot:0,carb:0,grasa:0,fibra:0});
     html += `<tr style="background:var(--surface);font-weight:600;"><td colspan="2" style="text-align:right;">Subtotal</td><td>${Math.round(sub.kcal)}</td><td>${round1(sub.prot)}</td><td>${round1(sub.carb)}</td><td>${round1(sub.grasa)}</td><td>${round1(sub.fibra)}</td><td></td></tr>`;
@@ -2146,7 +2321,7 @@ function renderNotesFromData(tipo, data, error){
   if(!data || data.length===0){ listEl.innerHTML = '<p class="muted" style="margin:0 0 10px;">Aún no hay notas guardadas.</p>'; return; }
   listEl.innerHTML = data.map(n=>{
     const when = new Date(n.created_at).toLocaleString('es-CO',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-    return `<div class="note-item"><div><div class="when">${when}</div><div class="txt">${escHtml(n.nota||'')}</div></div><button class="small secondary" onclick="deleteNote('${n.id}','${tipo}')">×</button></div>`;
+    return `<div class="note-item"><div><div class="when">${when}</div><div class="txt">${escHtml(n.nota||'')}</div></div><button class="icon-btn" onclick="deleteNote('${n.id}','${tipo}')">×</button></div>`;
   }).join('');
 }
 
@@ -2233,7 +2408,7 @@ function renderWeightList(){
   if(vWeights.length===0){ wrap.innerHTML='<p class="muted">Aún no hay pesajes registrados.</p>'; note.textContent=''; return; }
   const desc = [...vWeights].sort((a,b)=>b.fecha.localeCompare(a.fecha));
   let html = '<div class="scroll" style="max-height:200px;"><table><thead><tr><th>Fecha</th><th>Peso (kg)</th><th></th></tr></thead><tbody>';
-  desc.forEach(w=>{ html += `<tr><td>${w.fecha}</td><td>${w.peso}</td><td><button class="small secondary" onclick="deleteWeight('${w.id}')">×</button></td></tr>`; });
+  desc.forEach(w=>{ html += `<tr><td>${w.fecha}</td><td>${w.peso}</td><td><button class="icon-btn" onclick="deleteWeight('${w.id}')">×</button></td></tr>`; });
   html += '</tbody></table></div>';
   wrap.innerHTML = html;
   const weekly = computeWeeklyAverages(vWeights);
@@ -2453,6 +2628,7 @@ window.onFotoFileSelected=onFotoFileSelected; window.deleteFotoProgreso=deleteFo
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
+window.renderTrainerHistDay=renderTrainerHistDay; window.openEditEntry=openEditEntry; window.closeEditEntry=closeEditEntry; window.saveEditEntry=saveEditEntry; window.onEditEntryFoodChange=onEditEntryFoodChange; window.onEditEntryModeChange=onEditEntryModeChange;
 window.openPlantillaModal=openPlantillaModal; window.closePlantillaModal=closePlantillaModal; window.savePlantilla=savePlantilla;
 window.addPlantillaRow=addPlantillaRow; window.removePlantillaRow=removePlantillaRow; window.updPlantillaRow=updPlantillaRow;
 window.togglePlantillaChip=togglePlantillaChip; window.aplicarPlantilla=aplicarPlantilla; window.eliminarPlantilla=eliminarPlantilla; window.refreshPlantillasList=refreshPlantillasList;
