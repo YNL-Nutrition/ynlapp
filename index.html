@@ -227,6 +227,22 @@
   </div>
 </div>
 
+<!-- ===================== MODAL: PLANTILLA DE COMIDA ===================== -->
+<div class="modal-bg" id="plModalBg">
+  <div class="modal" style="width:560px;">
+    <h1 style="font-size:16px;">Nueva plantilla de comida</h1>
+    <label>Nombre</label>
+    <input type="text" id="pl_nombre" placeholder="Ej. Desayuno de avena">
+    <div id="plDraftRows" style="margin-top:10px;"></div>
+    <div style="margin-top:8px;"><button class="secondary small" onclick="addPlantillaRow()">+ Agregar alimento</button></div>
+    <div class="modal-actions">
+      <button class="secondary" onclick="closePlantillaModal()">Cancelar</button>
+      <button id="plSaveBtn" onclick="savePlantilla()">Guardar</button>
+    </div>
+    <p class="error" id="plModalErr"></p>
+  </div>
+</div>
+
 <script>
 const SUPABASE_URL = "https://thfnhfeysvomoiwdguvs.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_8b8P9eK5ZKgy4QFjF9KV0w_1LF37Jb-";
@@ -1674,11 +1690,19 @@ async function renderNutricionTab(){
       </div>
   `;
 
+  const plantillasBody = `
+      <div style="max-width:700px;">
+        <div style="margin-bottom:12px;"><button onclick="openPlantillaModal()">+ Nueva plantilla</button></div>
+        <div id="plantillasList">${renderPlantillasListHtml()}</div>
+      </div>
+  `;
+
   document.getElementById('clienteTabContent').innerHTML = wrapAccordionList(
     accordionSectionHtml('metas', 'Metas diarias', metasBody, false) +
     accordionSectionHtml('registro', 'Registro diario', registroBody, false) +
     accordionSectionHtml('peso', 'Peso corporal', pesoBody, false) +
-    accordionSectionHtml('notas', 'Notas del día', notasBody, false)
+    accordionSectionHtml('notas', 'Notas del día', notasBody, false) +
+    accordionSectionHtml('plantillas', 'Plantillas de comida', plantillasBody, false)
   );
 
   populateFoodSelect();
@@ -1863,6 +1887,148 @@ async function addEntry(){
 async function deleteEntry(id){
   await sb.from('registro').delete().eq('id', id);
   await loadLogForDate(vDate);
+}
+
+// ---------- Plantillas de comida ----------
+function plItemCalc(it){
+  const food = (alimentosCache||[]).find(f=>String(f.id)===String(it.alimento_id));
+  if(!food) return null;
+  const qty = Number(it.cantidad);
+  const isUnit = it.unidad_modo==='unidad' && food.unidad_label;
+  const portionG = isUnit ? qty*food.unidad_gramos : qty;
+  const factor = portionG/100;
+  const label = isUnit ? `${qty} ${food.unidad_label}${qty!=1?'s':''} (${round1(portionG)} g)` : `${portionG} g`;
+  return { food, portionG, label,
+    kcal: food.kcal*factor, proteina: food.proteina*factor, carbohidratos: food.carbohidratos*factor,
+    grasa: food.grasa*factor, fibra: food.fibra*factor };
+}
+
+function renderPlantillasListHtml(){
+  if(!vPlantillas.length) return '<p class="muted">Aún no hay plantillas. Crea una con “+ Nueva plantilla”.</p>';
+  return vPlantillas.map(p=>{
+    const items = (p.plantilla_items||[]).slice().sort((a,b)=>(a.orden||0)-(b.orden||0));
+    const calcs = items.map(plItemCalc).filter(Boolean);
+    const tot = calcs.reduce((a,c)=>({kcal:a.kcal+c.kcal,prot:a.prot+c.proteina,carb:a.carb+c.carbohidratos,grasa:a.grasa+c.grasa}), {kcal:0,prot:0,carb:0,grasa:0});
+    const lines = calcs.map(c=>`${escHtml(c.food.nombre)} · ${escHtml(c.label)}`).join('<br>');
+    return `<div class="card" style="padding:14px;margin:0 0 10px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;">
+        <b>${escHtml(p.nombre)}</b>
+        <span style="font-size:12px;">${Math.round(tot.kcal)} kcal · <span style="color:#D64545;">P ${round1(tot.prot)}</span> · <span style="color:#3B6EA5;">C ${round1(tot.carb)}</span> · <span style="color:#D9A72E;">G ${round1(tot.grasa)}</span></span>
+      </div>
+      <div class="muted" style="font-size:12px;margin:8px 0;">${lines || 'Sin alimentos'}</div>
+      <div class="inline">
+        <select id="plMeal_${p.id}" style="width:auto;"><option>Desayuno</option><option>Almuerzo</option><option>Cena</option><option>Snack</option></select>
+        <button class="small" onclick="aplicarPlantilla('${p.id}')">Aplicar al día</button>
+        <button class="small secondary" onclick="eliminarPlantilla('${p.id}')">Eliminar</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function refreshPlantillasList(){
+  const el = document.getElementById('plantillasList');
+  if(el) el.innerHTML = renderPlantillasListHtml();
+}
+
+async function reloadPlantillas(){
+  const res = await sb.from('plantillas_comida').select('*, plantilla_items(*, alimentos(nombre))').eq('cliente_id', vCliente.id).order('nombre');
+  vPlantillas = res.data || [];
+  refreshPlantillasList();
+}
+
+async function aplicarPlantilla(id){
+  const p = vPlantillas.find(x=>x.id===id);
+  if(!p) return;
+  const meal = document.getElementById('plMeal_'+id).value;
+  const rows = (p.plantilla_items||[]).map(plItemCalc).filter(Boolean).map(c=>({
+    cliente_id: vCliente.id, fecha: vDate, comida: meal, alimento: c.food.nombre, porcion: c.label,
+    kcal: c.kcal, proteina: c.proteina, carbohidratos: c.carbohidratos, grasa: c.grasa, fibra: c.fibra,
+  }));
+  if(!rows.length){ alert('Esta plantilla no tiene alimentos válidos.'); return; }
+  const { error } = await sb.from('registro').insert(rows);
+  if(error){ alert('No se pudo aplicar: '+error.message); return; }
+  await loadLogForDate(vDate);
+  alert(`Plantilla aplicada a ${meal} (${vDate}).`);
+}
+
+async function eliminarPlantilla(id){
+  const p = vPlantillas.find(x=>x.id===id);
+  if(!p || !confirm(`¿Eliminar la plantilla “${p.nombre}”?`)) return;
+  const { error } = await sb.from('plantillas_comida').delete().eq('id', id);
+  if(error){ alert('No se pudo eliminar: '+error.message); return; }
+  vPlantillas = vPlantillas.filter(x=>x.id!==id);
+  refreshPlantillasList();
+}
+
+function openPlantillaModal(){
+  vPlantillaDraftItems = [{ alimento_id: (alimentosCache&&alimentosCache[0]) ? alimentosCache[0].id : '', cantidad: 100, unidad_modo: 'g' }];
+  document.getElementById('pl_nombre').value = '';
+  document.getElementById('plModalErr').textContent = '';
+  renderPlantillaDraft();
+  document.getElementById('plModalBg').classList.add('show');
+}
+function closePlantillaModal(){ document.getElementById('plModalBg').classList.remove('show'); }
+
+function renderPlantillaDraft(){
+  const byCat = {};
+  (alimentosCache||[]).forEach(f=>{ (byCat[f.categoria]=byCat[f.categoria]||[]).push(f); });
+  document.getElementById('plDraftRows').innerHTML = vPlantillaDraftItems.map((it,i)=>{
+    const food = (alimentosCache||[]).find(f=>String(f.id)===String(it.alimento_id));
+    const opts = Object.keys(byCat).map(cat=>`<optgroup label="${escHtml(cat)}">${byCat[cat].map(f=>`<option value="${f.id}"${String(f.id)===String(it.alimento_id)?' selected':''}>${escHtml(f.nombre)}</option>`).join('')}</optgroup>`).join('');
+    const modeSel = (food && food.unidad_label)
+      ? `<select style="width:110px;" onchange="updPlantillaRow(${i},'unidad_modo',this.value)"><option value="g"${it.unidad_modo==='g'?' selected':''}>Gramos</option><option value="unidad"${it.unidad_modo==='unidad'?' selected':''}>${escHtml(capitalize(food.unidad_label))}</option></select>`
+      : `<span class="muted" style="width:110px;font-size:12px;">Gramos</span>`;
+    return `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+      <select style="flex:1;min-width:0;" onchange="updPlantillaRow(${i},'alimento_id',this.value)">${opts}</select>
+      <input type="number" step="any" min="0" style="width:80px;" value="${it.cantidad}" oninput="updPlantillaRow(${i},'cantidad',this.value,true)">
+      ${modeSel}
+      <button class="small secondary" onclick="removePlantillaRow(${i})">×</button>
+    </div>`;
+  }).join('');
+}
+
+function addPlantillaRow(){
+  vPlantillaDraftItems.push({ alimento_id: (alimentosCache&&alimentosCache[0]) ? alimentosCache[0].id : '', cantidad: 100, unidad_modo: 'g' });
+  renderPlantillaDraft();
+}
+function removePlantillaRow(i){
+  vPlantillaDraftItems.splice(i,1);
+  renderPlantillaDraft();
+}
+function updPlantillaRow(i, field, val, silent){
+  const it = vPlantillaDraftItems[i]; if(!it) return;
+  if(field==='cantidad'){ it.cantidad = val; return; }
+  it[field] = val;
+  if(field==='alimento_id'){
+    const food = (alimentosCache||[]).find(f=>String(f.id)===String(val));
+    it.unidad_modo = 'g'; it.cantidad = 100;
+    if(!(food && food.unidad_label)) it.unidad_modo = 'g';
+  }
+  if(field==='unidad_modo') it.cantidad = val==='unidad' ? 1 : 100;
+  renderPlantillaDraft();
+}
+
+async function savePlantilla(){
+  const err = document.getElementById('plModalErr'); err.textContent = '';
+  const nombre = document.getElementById('pl_nombre').value.trim();
+  if(!nombre){ err.textContent = 'Ponle un nombre a la plantilla.'; return; }
+  if(!vPlantillaDraftItems.length){ err.textContent = 'Agrega al menos un alimento.'; return; }
+  for(const it of vPlantillaDraftItems){
+    const q = parseFloat(it.cantidad);
+    if(!it.alimento_id || isNaN(q) || q<=0){ err.textContent = 'Revisa que cada alimento tenga una cantidad mayor a 0.'; return; }
+  }
+  const btn = document.getElementById('plSaveBtn'); btn.disabled = true;
+  const { data: pl, error: e1 } = await sb.from('plantillas_comida').insert({ cliente_id: vCliente.id, nombre }).select().single();
+  if(e1){ err.textContent = 'No se pudo guardar: '+e1.message; btn.disabled = false; return; }
+  const items = vPlantillaDraftItems.map((it,i)=>({ plantilla_id: pl.id, alimento_id: it.alimento_id, cantidad: parseFloat(it.cantidad), unidad_modo: it.unidad_modo, orden: i+1 }));
+  const { error: e2 } = await sb.from('plantilla_items').insert(items);
+  if(e2){
+    await sb.from('plantillas_comida').delete().eq('id', pl.id);
+    err.textContent = 'No se pudieron guardar los alimentos: '+e2.message; btn.disabled = false; return;
+  }
+  btn.disabled = false;
+  closePlantillaModal();
+  await reloadPlantillas();
 }
 
 function renderLog(){
@@ -2269,6 +2435,9 @@ window.onFotoFileSelected=onFotoFileSelected; window.deleteFotoProgreso=deleteFo
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
+window.openPlantillaModal=openPlantillaModal; window.closePlantillaModal=closePlantillaModal; window.savePlantilla=savePlantilla;
+window.addPlantillaRow=addPlantillaRow; window.removePlantillaRow=removePlantillaRow; window.updPlantillaRow=updPlantillaRow;
+window.aplicarPlantilla=aplicarPlantilla; window.eliminarPlantilla=eliminarPlantilla; window.refreshPlantillasList=refreshPlantillasList;
 window.saveProfileNote=saveProfileNote; window.deleteNote=deleteNote;
 window.addWeight=addWeight; window.deleteWeight=deleteWeight; window.downloadMenu=downloadMenu;
 
