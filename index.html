@@ -1653,11 +1653,8 @@ async function renderNutricionTab(){
       <div class="scroll"><table><thead><tr><th>Alimento</th><th>Porción</th><th>Kcal</th><th>Prot</th><th>Carb</th><th>Grasa</th><th>Fibra</th><th></th></tr></thead>
       <tbody id="logTableBody"><tr><td colspan="8" class="muted">Cargando…</td></tr></tbody></table></div>
 
-      <div data-html2canvas-ignore="true">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px;">
-          <h2 style="margin:0;line-height:1;">Favoritos</h2>
-          <button onclick="openPlantillaModal()">+ Agregar</button>
-        </div>
+      <div data-html2canvas-ignore="true" style="padding-bottom:16px;">
+        <h2>Favoritos</h2>
         <div id="plantillasList">${renderPlantillasListHtml()}</div>
       </div>
 
@@ -1906,7 +1903,8 @@ function plItemCalc(it){
 let vPlantillaOpenId = null;
 
 function renderPlantillasListHtml(){
-  if(!vPlantillas.length) return '<p class="muted" style="margin:0;">Aún no tienes favoritos. Crea uno con “+ Agregar”.</p>';
+  const addBtn = `<button style="flex:0 0 auto;margin-left:16px;" onclick="openPlantillaModal()">+ Agregar</button>`;
+  if(!vPlantillas.length) return `<div style="display:flex;align-items:center;justify-content:space-between;"><p class="muted" style="margin:0;">Aún no tienes favoritos.</p>${addBtn}</div>`;
   const chips = vPlantillas.map(p=>{
     const on = p.id===vPlantillaOpenId;
     return `<div onclick="togglePlantillaChip('${p.id}')" title="${escHtml(p.nombre)}" style="flex:0 0 150px;width:150px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;font-size:14px;padding:10px 12px;background:var(--card);border:1px solid ${on?'var(--ink)':'var(--border)'};border-radius:4px;${on?'font-weight:600;':''}">${escHtml(p.nombre)}</div>`;
@@ -1936,7 +1934,7 @@ function renderPlantillasListHtml(){
       <div style="text-align:right;"><button class="secondary" onclick="eliminarPlantilla('${p.id}')">Eliminar</button></div>
     </div>`;
   }
-  return `<div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;">${chips}</div>${detail}`;
+  return `<div style="display:flex;align-items:flex-start;"><div style="flex:1;min-width:0;display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;">${chips}</div>${addBtn}</div>${detail}`;
 }
 
 function togglePlantillaChip(id){
@@ -2465,3 +2463,4 @@ init();
 </script>
 </body>
 </html>
+
