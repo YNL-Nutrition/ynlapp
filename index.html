@@ -19,8 +19,11 @@
     --bg:#FAFAF8; --card:#FFFFFF; --border:#E3E2DD; --surface:#F1F0EC; --amber:#F5F0DC;
   }
   html.dark .loading-state img, html.dark img[alt="YNL"], html.dark img[alt="Inicio"]{ filter:invert(1); }
-  .dm-checkbox{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:1.5px solid #111111;border-radius:3px;background:#fff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;position:relative;flex-shrink:0;margin:0;}
-  .dm-checkbox:checked::after{content:'✓';color:#111111;font-size:13px;font-weight:700;position:absolute;top:50%;left:50%;transform:translate(-50%,-55%);line-height:1;}
+  .dm-checkbox{appearance:none;-webkit-appearance:none;width:46px;height:28px;border:none;border-radius:999px;background:var(--faint);position:relative;cursor:pointer;flex-shrink:0;margin:0;padding:0;box-shadow:none;outline:none;transition:background .2s;}
+  .dm-checkbox::after{content:'';position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff;transition:transform .2s;}
+  .dm-checkbox:checked{background:var(--ink);}
+  .dm-checkbox:checked::after{background:var(--bg);transform:translateX(18px);}
+  .dm-checkbox:focus{outline:none;box-shadow:none;}
   .pr-badge{font-size:10px;font-weight:700;border:1px solid var(--ink);border-radius:3px;padding:1px 5px;margin-left:6px;letter-spacing:.03em;}
   html.dark{
     --ink:#F0F0EE; --muted:#9A9A96; --faint:#6B6B68;
@@ -103,6 +106,8 @@
   .chart-wrap{position:relative;width:180px;height:180px;margin:0 auto;}
   @media (max-width:640px){
     .chart-wrap-wide{position:relative;height:220px;margin:14px 0;}
+    .chart-scroll{overflow-x:auto;overflow-y:hidden;margin:14px 0;-webkit-overflow-scrolling:touch;}
+    .chart-inner{position:relative;height:220px;min-width:100%;}
     .chart-wrap-wide + h2{margin-top:14px;}
     input[type=number]{-moz-appearance:textfield;}
     input[type=number]::-webkit-inner-spin-button,
@@ -835,6 +840,7 @@ function toggleAccordionSection(id){
   body.style.display = isOpen ? 'none' : 'block';
   header.classList.toggle('active', !isOpen);
   header.querySelector('.chev').textContent = isOpen ? '▾' : '▴';
+  if(!isOpen) setTimeout(()=>body.querySelectorAll('.chart-scroll').forEach(s=>{ s.scrollLeft = s.scrollWidth; }), 80);
 }
 
 function loadingHtml(){
@@ -910,7 +916,7 @@ async function renderClienteTabsScreen(initialTab){
           <img src="logo.png" alt="Inicio" style="height:56px;width:auto;cursor:pointer;" onclick="renderClienteHome()">
         </div>
         <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;margin-bottom:4px;">
-          <div><button onclick="renderClienteHome()" style="background:none;border:none;color:var(--muted);font:inherit;font-size:13px;cursor:pointer;padding:8px 0;">‹ Inicio</button></div>
+          <div></div>
           <div id="clienteSectionLabel" style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;"></div>
           <div></div>
         </div>
@@ -1772,7 +1778,7 @@ async function renderNutricionTab(){
       </div>
 
       <h2>Historial (últimos 7 días)</h2>
-      <div class="chart-wrap-wide"><canvas id="historyChart" height="90"></canvas></div>
+      <div class="chart-scroll"><div class="chart-inner"><canvas id="historyChart"></canvas></div></div>
   `;
 
   const pesoBody = `
@@ -1948,7 +1954,7 @@ async function downloadMenu(){
   title.textContent = `${vCliente.nombre} — ${fecha}`;
   area.insertBefore(title, area.firstChild);
 
-  const canvas = await html2canvas(area, { backgroundColor: themeBg(), scale: 2 });
+  const canvas = await html2canvas(area, { backgroundColor: themeBg(), scale: 2, onclone: (doc)=>{ doc.querySelectorAll('.chart-inner').forEach(el=>{ el.style.width='100%'; }); doc.querySelectorAll('.chart-scroll').forEach(el=>{ el.style.overflow='visible'; }); } });
   area.removeChild(title);
 
   const dataUrl = canvas.toDataURL('image/png');
@@ -2316,11 +2322,13 @@ async function renderHistoryChart(){
   const labels = days.map(d=> new Date(d+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric'}));
   if(historyChart) historyChart.destroy();
   const isMobileHist = window.matchMedia('(max-width:640px)').matches;
+  fitScrollChart('historyChart', days.length, 46);
   historyChart = new Chart(ctx, { type:'bar', data:{ labels, datasets:[
     { label:'Kcal', data:kcalByDay, backgroundColor: days.map(d=> d===vDate ? themeInk() : themeFaintBar()) },
     ...(vGoals.kcal>0 ? [{ label:'Meta', data: days.map(()=>vGoals.kcal), type:'line', borderColor:themeMuted(), borderDash:[5,4], pointRadius:0 }] : [])
-  ]}, options:{ maintainAspectRatio: !isMobileHist, plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}, scales:{y:{beginAtZero:true}},
+  ]}, options:{ maintainAspectRatio: false, plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}, scales:{y:{beginAtZero:true}},
     onClick:(evt,els)=>{ if(els.length){ const idx=els[0].index; document.getElementById('logDate').value=days[idx]; vDate=days[idx]; loadLogForDate(vDate); } } } });
+  scrollChartToEnd('historyChart');
 }
 
 // ---------- Notas ----------
@@ -2459,12 +2467,12 @@ async function renderProgresoTab(){
   vPesoChartCargado = false;
   vExChartCargado = false;
 
-  const pesoBody = `<div class="chart-wrap-wide"><canvas id="progresoPesoChart" height="90"></canvas></div>`;
+  const pesoBody = `<div class="chart-scroll"><div class="chart-inner"><canvas id="progresoPesoChart"></canvas></div></div>`;
   const ejerciciosBody = exList.length ? `
       <select id="progresoExSelect" onchange="renderProgresoExChart(this.value)">
         ${gruposConDatos.map(g=>`<optgroup label="${g}">${exList.filter(e=>e.grupo===g).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('')}</optgroup>`).join('')}
       </select>
-      <div class="chart-wrap-wide"><canvas id="progresoExChart" height="90"></canvas></div>
+      <div class="chart-scroll"><div class="chart-inner"><canvas id="progresoExChart"></canvas></div></div>
     ` : `<p class="muted">Todavía no hay series registradas en ningún ejercicio.</p>`;
   const fotosBody = `
       <div class="inline" style="margin-bottom:14px;">
@@ -2582,12 +2590,22 @@ async function deleteFotoProgreso(id, path){
   await loadFotosProgreso();
 }
 
+function fitScrollChart(canvasId, n, pxPerPoint){
+  const c = document.getElementById(canvasId); if(!c) return;
+  const inner = c.parentElement, scroller = inner.parentElement;
+  inner.style.width = Math.max(scroller.clientWidth, n*pxPerPoint) + 'px';
+}
+function scrollChartToEnd(canvasId){
+  const c = document.getElementById(canvasId); if(!c) return;
+  const scroller = c.parentElement.parentElement;
+  requestAnimationFrame(()=>{ scroller.scrollLeft = scroller.scrollWidth; });
+}
 function shortDate(d){
   return new Date(d+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'}).replace(' de ',' ').replace('.','');
 }
 function lineChartOptions(isMobile){
   return {
-    maintainAspectRatio: !isMobile,
+    maintainAspectRatio: false,
     plugins:{ legend:{ display:false } },
     scales:{
       x:{ grid:{ display:false, drawTicks:false }, border:{ display:false }, ticks:{ minRotation:0, maxRotation:0, autoSkip:true, maxTicksLimit: isMobile ? 6 : 10 } },
@@ -2603,7 +2621,9 @@ function renderProgresoPesoChart(){
   if(progresoPesoChartObj) progresoPesoChartObj.destroy();
   if(weekly.length===0) return;
   const isMobile = window.matchMedia('(max-width:640px)').matches;
+  fitScrollChart('progresoPesoChart', weekly.length, 56);
   progresoPesoChartObj = new Chart(ctx, { type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:themeInk(), backgroundColor:themeInk(), tension:0.25, pointRadius:3 }]}, options: lineChartOptions(isMobile) });
+  scrollChartToEnd('progresoPesoChart');
 }
 
 function renderProgresoExChart(ejercicioId){
@@ -2620,10 +2640,12 @@ function renderProgresoExChart(ejercicioId){
   const valores = fechas.map(f=>byFecha[f]);
   const maxVal = Math.max(...valores);
   const isMobile = window.matchMedia('(max-width:640px)').matches;
+  fitScrollChart('progresoExChart', fechas.length, 56);
   progresoExChartObj = new Chart(ctx, { type:'line', data:{ labels: fechas.map(f=> shortDate(f)), datasets:[{ label:'Peso máx. (kg)', data: valores, borderColor:themeInk(), backgroundColor:themeInk(),
     pointBackgroundColor: valores.map(v=> v===maxVal ? '#D9A72E' : themeInk()),
     pointRadius: valores.map(v=> v===maxVal ? 5 : 3),
     tension:0.25 }]}, options: lineChartOptions(isMobile) });
+  scrollChartToEnd('progresoExChart');
 }
 
 function renderWeightChart(){
