@@ -106,7 +106,9 @@
   .chart-wrap{position:relative;width:180px;height:180px;margin:0 auto;}
   @media (max-width:640px){
     .chart-wrap-wide{position:relative;height:220px;margin:14px 0;}
-    .chart-scroll{overflow-x:auto;overflow-y:hidden;margin:14px 0;-webkit-overflow-scrolling:touch;}
+    .chart-shell{position:relative;margin:14px 0;}
+    .chart-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;}
+    .chart-axis{position:absolute;left:0;top:0;display:none;pointer-events:none;background:var(--bg);}
     .chart-inner{position:relative;height:220px;min-width:100%;}
     .chart-wrap-wide + h2{margin-top:14px;}
     input[type=number]{-moz-appearance:textfield;}
@@ -1778,7 +1780,7 @@ async function renderNutricionTab(){
       </div>
 
       <h2>Historial (últimos 7 días)</h2>
-      <div class="chart-scroll"><div class="chart-inner"><canvas id="historyChart"></canvas></div></div>
+      <div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="historyChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>
   `;
 
   const pesoBody = `
@@ -1954,7 +1956,7 @@ async function downloadMenu(){
   title.textContent = `${vCliente.nombre} — ${fecha}`;
   area.insertBefore(title, area.firstChild);
 
-  const canvas = await html2canvas(area, { backgroundColor: themeBg(), scale: 2, onclone: (doc)=>{ doc.querySelectorAll('.chart-inner').forEach(el=>{ el.style.width='100%'; }); doc.querySelectorAll('.chart-scroll').forEach(el=>{ el.style.overflow='visible'; }); } });
+  const canvas = await html2canvas(area, { backgroundColor: themeBg(), scale: 2, onclone: (doc)=>{ doc.querySelectorAll('.chart-inner').forEach(el=>{ el.style.width='100%'; }); doc.querySelectorAll('.chart-scroll').forEach(el=>{ el.style.overflow='visible'; }); doc.querySelectorAll('.chart-axis').forEach(el=>{ el.style.display='none'; }); } });
   area.removeChild(title);
 
   const dataUrl = canvas.toDataURL('image/png');
@@ -2323,7 +2325,7 @@ async function renderHistoryChart(){
   if(historyChart) historyChart.destroy();
   const isMobileHist = window.matchMedia('(max-width:640px)').matches;
   fitScrollChart('historyChart', days.length, 46);
-  historyChart = new Chart(ctx, { type:'bar', data:{ labels, datasets:[
+  historyChart = new Chart(ctx, { plugins:[fixedYAxisPlugin], type:'bar', data:{ labels, datasets:[
     { label:'Kcal', data:kcalByDay, backgroundColor: days.map(d=> d===vDate ? themeInk() : themeFaintBar()) },
     ...(vGoals.kcal>0 ? [{ label:'Meta', data: days.map(()=>vGoals.kcal), type:'line', borderColor:themeMuted(), borderDash:[5,4], pointRadius:0 }] : [])
   ]}, options:{ maintainAspectRatio: false, plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}, scales:{y:{beginAtZero:true}},
@@ -2467,12 +2469,12 @@ async function renderProgresoTab(){
   vPesoChartCargado = false;
   vExChartCargado = false;
 
-  const pesoBody = `<div class="chart-scroll"><div class="chart-inner"><canvas id="progresoPesoChart"></canvas></div></div>`;
+  const pesoBody = `<div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="progresoPesoChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>`;
   const ejerciciosBody = exList.length ? `
       <select id="progresoExSelect" onchange="renderProgresoExChart(this.value)">
         ${gruposConDatos.map(g=>`<optgroup label="${g}">${exList.filter(e=>e.grupo===g).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('')}</optgroup>`).join('')}
       </select>
-      <div class="chart-scroll"><div class="chart-inner"><canvas id="progresoExChart"></canvas></div></div>
+      <div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="progresoExChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>
     ` : `<p class="muted">Todavía no hay series registradas en ningún ejercicio.</p>`;
   const fotosBody = `
       <div class="inline" style="margin-bottom:14px;">
@@ -2590,6 +2592,22 @@ async function deleteFotoProgreso(id, path){
   await loadFotosProgreso();
 }
 
+const fixedYAxisPlugin = {
+  id: 'fixedYAxis',
+  afterRender(chart){
+    const shell = chart.canvas.closest('.chart-shell'); if(!shell) return;
+    const axis = shell.querySelector('.chart-axis');
+    const scroller = shell.querySelector('.chart-scroll');
+    const y = chart.scales && chart.scales.y;
+    if(!axis || !scroller || !y) return;
+    if(scroller.scrollWidth <= scroller.clientWidth + 1){ axis.style.display = 'none'; return; }
+    const r = chart.currentDevicePixelRatio || window.devicePixelRatio || 1;
+    const w = Math.ceil(y.right), hgt = Math.ceil(y.bottom + 6);
+    axis.width = Math.round(w*r); axis.height = Math.round(hgt*r);
+    axis.style.width = w + 'px'; axis.style.height = hgt + 'px'; axis.style.display = 'block';
+    axis.getContext('2d').drawImage(chart.canvas, 0, 0, axis.width, axis.height, 0, 0, axis.width, axis.height);
+  }
+};
 function fitScrollChart(canvasId, n, pxPerPoint){
   const c = document.getElementById(canvasId); if(!c) return;
   const inner = c.parentElement, scroller = inner.parentElement;
@@ -2622,7 +2640,7 @@ function renderProgresoPesoChart(){
   if(weekly.length===0) return;
   const isMobile = window.matchMedia('(max-width:640px)').matches;
   fitScrollChart('progresoPesoChart', weekly.length, 56);
-  progresoPesoChartObj = new Chart(ctx, { type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:themeInk(), backgroundColor:themeInk(), tension:0.25, pointRadius:3 }]}, options: lineChartOptions(isMobile) });
+  progresoPesoChartObj = new Chart(ctx, { plugins:[fixedYAxisPlugin], type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:themeInk(), backgroundColor:themeInk(), tension:0.25, pointRadius:3 }]}, options: lineChartOptions(isMobile) });
   scrollChartToEnd('progresoPesoChart');
 }
 
@@ -2641,7 +2659,7 @@ function renderProgresoExChart(ejercicioId){
   const maxVal = Math.max(...valores);
   const isMobile = window.matchMedia('(max-width:640px)').matches;
   fitScrollChart('progresoExChart', fechas.length, 56);
-  progresoExChartObj = new Chart(ctx, { type:'line', data:{ labels: fechas.map(f=> shortDate(f)), datasets:[{ label:'Peso máx. (kg)', data: valores, borderColor:themeInk(), backgroundColor:themeInk(),
+  progresoExChartObj = new Chart(ctx, { plugins:[fixedYAxisPlugin], type:'line', data:{ labels: fechas.map(f=> shortDate(f)), datasets:[{ label:'Peso máx. (kg)', data: valores, borderColor:themeInk(), backgroundColor:themeInk(),
     pointBackgroundColor: valores.map(v=> v===maxVal ? '#D9A72E' : themeInk()),
     pointRadius: valores.map(v=> v===maxVal ? 5 : 3),
     tension:0.25 }]}, options: lineChartOptions(isMobile) });
