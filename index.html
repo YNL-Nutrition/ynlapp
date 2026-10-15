@@ -812,6 +812,7 @@ function unlockAudio(){
 let vHistoryPrecomputed = null; // kcal por día ya calculados, para pintar el historial sin volver a consultar
 
 // ---------- Acordeón genérico de secciones (título centrado + línea) ----------
+const vAccOpen = {};
 function accordionSectionHtml(id, title, bodyHtml, isOpen){
   return `
     <div class="sec-title${isOpen ? ' active' : ''}" onclick="toggleAccordionSection('${id}')">
@@ -830,6 +831,7 @@ function toggleAccordionSection(id){
   const body = document.getElementById('secBody_'+id);
   const header = body.previousElementSibling;
   const isOpen = body.style.display !== 'none';
+  vAccOpen[id] = !isOpen;
   body.style.display = isOpen ? 'none' : 'block';
   header.classList.toggle('active', !isOpen);
   header.querySelector('.chev').textContent = isOpen ? '▾' : '▴';
@@ -1467,34 +1469,37 @@ async function loadRutina(){
 }
 
 function renderRutinaBuilder(){
-  let html = `<div class="inline" style="margin-bottom:10px;"><h2 style="margin:0;">Rutina de ${vCliente.nombre}</h2><button onclick="openDiaModal()">+ Agregar día</button></div>`;
+  const header = `<div class="inline" style="margin-bottom:10px;"><h2 style="margin:0;">Rutina de ${escHtml(vCliente.nombre)}</h2><button onclick="openDiaModal()">+ Agregar día</button></div>`;
+  let sections = '';
   if(!vRutinaDias.length){
-    html += `<p class="muted">Aún no has armado la rutina de este cliente.</p>`;
+    sections += `<p class="muted">Aún no has armado la rutina de este cliente.</p>`;
   }
   vRutinaDias.forEach(d=>{
-    html += `<div class="card" style="margin-bottom:14px;padding:14px;">
+    const secId = 'tdia_'+d.id;
+    let body = `<div class="card" style="padding:14px;">
       <div class="inline" style="align-items:center;">
-        <div><strong>${d.orden}. ${d.nombre}</strong> <span class="muted">(${d.tipo==='gym'?'Gym':'Running'})</span></div>
+        <span class="muted">${d.tipo==='gym'?'Gym':'Running'}</span>
         <div style="display:flex;gap:6px;">
           <button class="icon-btn" title="Editar" onclick="openDiaModal('${d.id}')">✎</button>
           <button class="icon-btn" title="Eliminar" onclick="confirmDeleteDia('${d.id}')">✕</button>
         </div>
       </div>`;
     if(d.tipo === 'gym'){
-      html += `<div class="scroll" style="margin-top:10px;"><table><thead><tr><th>Ejercicio</th><th>Series</th><th>Reps</th><th>Peso sug.</th><th>Notas</th><th></th></tr></thead><tbody>`;
+      body += `<div class="scroll" style="margin-top:10px;"><table><thead><tr><th>Ejercicio</th><th>Series</th><th>Reps</th><th>Peso sug.</th><th>Notas</th><th></th></tr></thead><tbody>`;
       (d.ejercicios||[]).forEach(re=>{
-        html += `<tr><td>${re.ejercicios ? re.ejercicios.nombre : '—'}</td><td>${re.series ?? '—'}</td><td>${re.reps_objetivo ?? '—'}</td><td>${re.peso_sugerido ?? '—'}</td><td>${re.notas ?? '—'}</td>
+        body += `<tr><td>${re.ejercicios ? re.ejercicios.nombre : '—'}</td><td>${re.series ?? '—'}</td><td>${re.reps_objetivo ?? '—'}</td><td>${re.peso_sugerido ?? '—'}</td><td>${re.notas ?? '—'}</td>
           <td style="white-space:nowrap;"><button class="icon-btn" title="Editar" onclick="openRutinaEjercicioModal('${d.id}','${re.id}')">✎</button> <button class="icon-btn" title="Eliminar" onclick="confirmDeleteRutinaEjercicio('${re.id}')">✕</button></td></tr>`;
       });
-      html += `</tbody></table></div>
+      body += `</tbody></table></div>
       <div style="margin-top:8px;"><button class="small secondary" onclick="openRutinaEjercicioModal('${d.id}')">+ Agregar ejercicio</button></div>`;
     } else {
-      html += `<p class="muted" style="margin-top:10px;">Día de running — el cliente registra distancia, tiempo, pace, FC y cadencia directamente.</p>`;
+      body += `<p class="muted" style="margin-top:10px;">Día de running — el cliente registra distancia, tiempo, pace, FC y cadencia directamente.</p>`;
     }
-    html += `</div>`;
+    body += `</div>`;
+    sections += accordionSectionHtml(secId, `${d.orden}. ${escHtml(d.nombre)}`, body, !!vAccOpen[secId]);
   });
-  html += `<h2 style="margin-top:28px;">Historial de ${escHtml(vCliente.nombre)}</h2><div id="trainerHistorial">${loadingHtml()}</div>`;
-  document.getElementById('clienteTabContent').innerHTML = html;
+  sections += accordionSectionHtml('thist', 'Historial', `<div id="trainerHistorial">${loadingHtml()}</div>`, !!vAccOpen['thist']);
+  document.getElementById('clienteTabContent').innerHTML = header + wrapAccordionList(sections);
   loadTrainerHistorial();
 }
 
@@ -1516,17 +1521,17 @@ async function loadTrainerHistorial(){
   const dates = [...new Set(all.map(r=>r.fecha))].sort().reverse();
   if(!dates.length){ box.innerHTML = '<p class="muted">Aún no hay entrenamientos registrados.</p>'; return; }
   box.innerHTML = `<div class="field" style="max-width:320px;"><label>Fecha</label>
-      <select id="trainerHistDate" onchange="renderTrainerHistDay()">${dates.map(d=>{
+      <select id="trainerHistDate" onchange="renderTrainerHistDay()"><option value="">Selecciona una fecha</option>${dates.map(d=>{
         const names = [...new Set(all.filter(r=>r.fecha===d).map(r=>histDiaNombre(r.dia_id)))].join(', ');
         return `<option value="${d}">${histFecha(d)} · ${escHtml(names)}</option>`;
       }).join('')}</select></div>
     <div id="trainerHistDay" style="margin-top:12px;"></div>`;
-  renderTrainerHistDay();
 }
 
 function renderTrainerHistDay(){
   const sel = document.getElementById('trainerHistDate'); if(!sel) return;
   const d = sel.value;
+  if(!d){ document.getElementById('trainerHistDay').innerHTML = ''; return; }
   const gym = vTrainerHist.gym.filter(r=>r.fecha===d);
   const run = vTrainerHist.run.filter(r=>r.fecha===d);
   const byDia = {};
