@@ -43,10 +43,10 @@
   .te-tab{flex:0 0 64px;text-align:center;padding:9px 0;border:1px solid var(--border);border-radius:5px;font-size:13px;cursor:pointer;background:#fff;color:var(--ink);}
   .te-tab.active{background:var(--ink);color:var(--bg);border-color:var(--ink);}
   .te-tab.te-add,.te-tab.te-remove{flex:0 0 40px;color:var(--muted);}
-  .sec-title{text-align:center;padding:14px 0;cursor:pointer;}
-  .sec-title .t{display:inline-block;width:170px;text-align:center;font-size:17px;font-weight:600;border-bottom:1px solid var(--border);padding-bottom:10px;}
+  .sec-title{text-align:center;padding:28px 0;cursor:pointer;}
+  .sec-title .t{position:relative;display:inline-block;box-sizing:border-box;width:170px;padding:0 16px 10px;text-align:center;font-size:17px;font-weight:600;border-bottom:1px solid var(--border);}
   .sec-title.active .t{border-bottom-color:var(--ink);}
-  .sec-title .chev{color:var(--muted);font-size:12px;margin-left:4px;}
+  .sec-title .chev{position:absolute;right:4px;top:5px;line-height:1;color:var(--muted);font-size:10px;}
   .te-save.saved{background:none;color:var(--ink);border:1px solid var(--ink);}
   .te-row{display:flex;gap:10px;margin-bottom:12px;}
   .te-row .field{flex:1;}
@@ -816,7 +816,7 @@ const vAccOpen = {};
 function accordionSectionHtml(id, title, bodyHtml, isOpen){
   return `
     <div class="sec-title${isOpen ? ' active' : ''}" onclick="toggleAccordionSection('${id}')">
-      <span class="t">${title}</span><span class="chev">${isOpen ? '▴' : '▾'}</span>
+      <span class="t">${title}<span class="chev">${isOpen ? '▴' : '▾'}</span></span>
     </div>
     <div id="secBody_${id}" style="display:${isOpen ? 'block' : 'none'};margin-bottom:18px;">
       ${bodyHtml}
@@ -824,7 +824,7 @@ function accordionSectionHtml(id, title, bodyHtml, isOpen){
 }
 
 function wrapAccordionList(sectionsHtml){
-  return `<div style="display:flex;flex-direction:column;justify-content:space-evenly;min-height:60vh;">${sectionsHtml}</div>`;
+  return `<div style="display:flex;flex-direction:column;">${sectionsHtml}</div>`;
 }
 
 function toggleAccordionSection(id){
@@ -880,7 +880,7 @@ function renderClienteHome(){
   const cliente = vCliente;
   app.innerHTML = `
     <div style="min-height:calc(100svh - 40px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 24px;">
-      <img src="logo.png" alt="YNL" style="height:150px;width:auto;max-width:78%;display:block;margin-bottom:96px;">
+      <img src="logo.png" alt="YNL" style="height:150px;width:auto;max-width:78%;display:block;margin-bottom:40px;">
       <h1 style="font-weight:500;margin:0 0 96px;">Hola, ${cliente.nombre}</h1>
       <div style="width:100%;max-width:340px;">
         <div class="tabs" style="justify-content:center;">
@@ -908,6 +908,11 @@ async function renderClienteTabsScreen(initialTab){
       <div style="max-width:1200px;width:100%;margin:0 auto;padding:22px;">
         <div style="text-align:center;padding-bottom:18px;margin-bottom:20px;border-bottom:1px solid var(--border);">
           <img src="logo.png" alt="Inicio" style="height:56px;width:auto;cursor:pointer;" onclick="renderClienteHome()">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;margin-bottom:4px;">
+          <div><button onclick="renderClienteHome()" style="background:none;border:none;color:var(--muted);font:inherit;font-size:13px;cursor:pointer;padding:8px 0;">‹ Inicio</button></div>
+          <div id="clienteSectionLabel" style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.03em;"></div>
+          <div></div>
         </div>
         <div id="clienteTabContent">Cargando…</div>
       </div>
@@ -942,6 +947,8 @@ async function switchClienteTab(tab){
   if(bNutricion) bNutricion.classList.toggle('active', tab==='nutricion');
   if(bEntrenamiento) bEntrenamiento.classList.toggle('active', tab==='entrenamiento');
   if(bProgreso) bProgreso.classList.toggle('active', tab==='progreso');
+  const secLbl = document.getElementById('clienteSectionLabel');
+  if(secLbl) secLbl.textContent = { perfil:'Perfil', nutricion:'Nutrición', entrenamiento:'Entrenamiento', progreso:'Progreso' }[tab] || '';
   if(tab==='perfil') renderPerfilTab();
   else if(tab==='nutricion') await renderNutricionTab();
   else if(tab==='entrenamiento') await renderEntrenamientoTab();
@@ -1026,7 +1033,7 @@ function renderDiaAccordionList(activeDiaId){
   const wrap = document.getElementById('clienteTabContent');
   wrap.innerHTML = wrapAccordionList(vRutinaDias.map(d=>{
     const isActive = d.id === activeDiaId;
-    return `<div class="sec-title${isActive ? ' active' : ''}" onclick="selectDiaTab('${d.id}')"><span class="t">${d.nombre}</span><span class="chev">${isActive ? '▴' : '▾'}</span></div>`
+    return `<div class="sec-title${isActive ? ' active' : ''}" onclick="selectDiaTab('${d.id}')"><span class="t">${d.nombre}<span class="chev">${isActive ? '▴' : '▾'}</span></span></div>`
       + (isActive ? `<div id="miEntrenoDiaContent" style="margin-bottom:18px;">${loadingHtml()}</div>` : '');
   }).join(''));
 }
@@ -2402,7 +2409,7 @@ function computeWeeklyAverages(list){
   return Object.keys(groups).sort().map(key=>{
     const vals = groups[key];
     const avg = vals.reduce((a,b)=>a+b,0)/vals.length;
-    const label = new Date(key+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'});
+    const label = shortDate(key);
     return { key, label, avg, count: vals.length };
   });
 }
@@ -2575,6 +2582,20 @@ async function deleteFotoProgreso(id, path){
   await loadFotosProgreso();
 }
 
+function shortDate(d){
+  return new Date(d+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'}).replace(' de ',' ').replace('.','');
+}
+function lineChartOptions(isMobile){
+  return {
+    maintainAspectRatio: !isMobile,
+    plugins:{ legend:{ display:false } },
+    scales:{
+      x:{ grid:{ display:false, drawTicks:false }, border:{ display:false }, ticks:{ minRotation:0, maxRotation:0, autoSkip:true, maxTicksLimit: isMobile ? 6 : 10 } },
+      y:{ grid:{ drawTicks:false }, border:{ display:false }, ticks:{ maxTicksLimit:5 } }
+    }
+  };
+}
+
 function renderProgresoPesoChart(){
   const ctx = document.getElementById('progresoPesoChart');
   if(!ctx || typeof Chart==='undefined') return;
@@ -2582,7 +2603,7 @@ function renderProgresoPesoChart(){
   if(progresoPesoChartObj) progresoPesoChartObj.destroy();
   if(weekly.length===0) return;
   const isMobile = window.matchMedia('(max-width:640px)').matches;
-  progresoPesoChartObj = new Chart(ctx, { type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:themeInk(), backgroundColor:themeInk(), tension:0.25, pointRadius:4 }]}, options:{ maintainAspectRatio: !isMobile, plugins:{legend:{display:false}} } });
+  progresoPesoChartObj = new Chart(ctx, { type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:themeInk(), backgroundColor:themeInk(), tension:0.25, pointRadius:3 }]}, options: lineChartOptions(isMobile) });
 }
 
 function renderProgresoExChart(ejercicioId){
@@ -2599,10 +2620,10 @@ function renderProgresoExChart(ejercicioId){
   const valores = fechas.map(f=>byFecha[f]);
   const maxVal = Math.max(...valores);
   const isMobile = window.matchMedia('(max-width:640px)').matches;
-  progresoExChartObj = new Chart(ctx, { type:'line', data:{ labels: fechas.map(f=> new Date(f+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'})), datasets:[{ label:'Peso máx. (kg)', data: valores, borderColor:themeInk(), backgroundColor:themeInk(),
+  progresoExChartObj = new Chart(ctx, { type:'line', data:{ labels: fechas.map(f=> shortDate(f)), datasets:[{ label:'Peso máx. (kg)', data: valores, borderColor:themeInk(), backgroundColor:themeInk(),
     pointBackgroundColor: valores.map(v=> v===maxVal ? '#D9A72E' : themeInk()),
-    pointRadius: valores.map(v=> v===maxVal ? 6 : 4),
-    tension:0.25 }]}, options:{ maintainAspectRatio: !isMobile, plugins:{legend:{display:false}} } });
+    pointRadius: valores.map(v=> v===maxVal ? 5 : 3),
+    tension:0.25 }]}, options: lineChartOptions(isMobile) });
 }
 
 function renderWeightChart(){
@@ -2612,7 +2633,7 @@ function renderWeightChart(){
   if(weightChart) weightChart.destroy();
   if(weekly.length===0) return;
   const isMobileWt = window.matchMedia('(max-width:640px)').matches;
-  weightChart = new Chart(ctx, { type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:themeInk(), backgroundColor:themeInk(), tension:0.25, pointRadius:4 }]}, options:{ maintainAspectRatio: !isMobileWt, plugins:{legend:{display:false}} } });
+  weightChart = new Chart(ctx, { type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:themeInk(), backgroundColor:themeInk(), tension:0.25, pointRadius:3 }]}, options: lineChartOptions(isMobileWt) });
 }
 
 window.login=login; window.signup=signup; window.logout=logout; window.addCliente=addCliente;
