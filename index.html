@@ -157,7 +157,7 @@
 <!-- ===================== MODAL: AGREGAR ALIMENTO ===================== -->
 <div class="modal-bg" id="foodModalBg">
   <div class="modal">
-    <h1 id="foodModalTitle" style="font-size:16px;">Agregar alimento (valores por 100 g)</h1>
+    <h1 id="foodModalTitle" style="font-size:16px;">Agregar alimento</h1>
     <label>Categoría</label>
     <select id="f_cat" onchange="onFoodCatChange()"></select>
     <input type="text" id="f_cat_nueva" placeholder="Nombre de la nueva categoría" style="display:none;margin-top:6px;">
@@ -167,6 +167,9 @@
     <input type="text" id="f_estado" placeholder="crudo, cocido, etc.">
     <label>Fuente</label>
     <input type="text" id="f_fuente" placeholder="USDA FDC / etiqueta / estimado">
+    <label>Los valores de la tabla son de</label>
+    <select id="f_modo" onchange="onFoodModoChange()"><option value="100">100 g</option><option value="completo">El producto completo</option></select>
+    <p class="muted" id="f_modo_hint" style="display:none;font-size:12px;margin:6px 0 0;">Escribe los valores tal cual salen en la tabla del producto e indica abajo el nombre de la unidad y su peso total. La app calcula los valores por 100 g.</p>
     <div class="grid2" style="max-width:none;">
       <div><label>Kcal</label><input type="text" id="f_kcal"></div>
       <div><label>Proteína (g)</label><input type="text" id="f_prot"></div>
@@ -174,7 +177,7 @@
       <div><label>Grasa (g)</label><input type="text" id="f_grasa"></div>
       <div><label>Fibra (g)</label><input type="text" id="f_fibra"></div>
     </div>
-    <label>Unidad de referencia (opcional)</label>
+    <label id="f_unidad_title">Unidad de referencia (opcional)</label>
     <div class="grid2" style="max-width:none;grid-template-columns:2fr 1fr;">
       <input type="text" id="f_unidad_label" placeholder="Ej. tajada, huevo mediano">
       <input type="text" id="f_unidad_gramos" placeholder="Peso (g)">
@@ -574,7 +577,9 @@ function openEditFood(id){
   if(!f) return;
   editingFoodId = id;
   document.getElementById('foodModalErr').textContent = '';
-  document.getElementById('foodModalTitle').textContent = 'Editar alimento (valores por 100 g)';
+  document.getElementById('foodModalTitle').textContent = 'Editar alimento';
+  document.getElementById('f_modo').value = '100';
+  onFoodModoChange();
   document.getElementById('foodModalSaveBtn').textContent = 'Guardar cambios';
   fillCategorySelect(f.categoria);
   document.getElementById('f_cat_nueva').value = '';
@@ -593,7 +598,9 @@ function openEditFood(id){
 
 function openFoodModal(){
   editingFoodId = null;
-  document.getElementById('foodModalTitle').textContent = 'Agregar alimento (valores por 100 g)';
+  document.getElementById('foodModalTitle').textContent = 'Agregar alimento';
+  document.getElementById('f_modo').value = '100';
+  onFoodModoChange();
   document.getElementById('foodModalSaveBtn').textContent = 'Guardar';
   document.getElementById('foodModalErr').textContent = '';
   ['f_nombre','f_estado','f_fuente','f_kcal','f_prot','f_carb','f_grasa','f_fibra','f_unidad_label','f_unidad_gramos','f_cat_nueva'].forEach(id=>document.getElementById(id).value='');
@@ -602,6 +609,13 @@ function openFoodModal(){
   catSel.innerHTML = cats.map(c=>`<option value="${c}">${c}</option>`).join('') + '<option value="__nueva__">+ Nueva categoría…</option>';
   document.getElementById('f_cat_nueva').style.display = 'none';
   document.getElementById('foodModalBg').classList.add('show');
+}
+function onFoodModoChange(){
+  const completo = document.getElementById('f_modo').value === 'completo';
+  document.getElementById('f_modo_hint').style.display = completo ? '' : 'none';
+  document.getElementById('f_unidad_title').textContent = completo ? 'Unidad y peso total del producto' : 'Unidad de referencia (opcional)';
+  document.getElementById('f_unidad_label').placeholder = completo ? 'Ej. sándwich, porción' : 'Ej. tajada, huevo mediano';
+  document.getElementById('f_unidad_gramos').placeholder = completo ? 'Peso total (g)' : 'Peso (g)';
 }
 function onFoodCatChange(){
   const isNew = document.getElementById('f_cat').value === '__nueva__';
@@ -614,12 +628,17 @@ async function saveFood(){
   const categoria = catSelVal === '__nueva__' ? document.getElementById('f_cat_nueva').value.trim() : catSelVal;
   const nombre = document.getElementById('f_nombre').value.trim();
   const num = (id)=>{ const v = parseFloat(document.getElementById(id).value.replace(',','.')); return isNaN(v) ? null : v; };
-  const kcal = num('f_kcal'), prot = num('f_prot'), carb = num('f_carb'), grasa = num('f_grasa'), fibra = num('f_fibra');
+  let kcal = num('f_kcal'), prot = num('f_prot'), carb = num('f_carb'), grasa = num('f_grasa'), fibra = num('f_fibra');
   const err = document.getElementById('foodModalErr');
   if(!categoria || !nombre){ err.textContent = 'Escribe categoría y nombre.'; return; }
-  if([kcal,prot,carb,grasa,fibra].some(v=>v===null)){ err.textContent = 'Completa los 5 valores numéricos por 100 g.'; return; }
+  if([kcal,prot,carb,grasa,fibra].some(v=>v===null)){ err.textContent = 'Completa los 5 valores numéricos.'; return; }
   const unidadLabel = document.getElementById('f_unidad_label').value.trim();
   const unidadGramos = num('f_unidad_gramos');
+  if(document.getElementById('f_modo').value === 'completo'){
+    if(!unidadLabel || !unidadGramos || unidadGramos <= 0){ err.textContent = 'Para un producto completo escribe el nombre de la unidad y su peso total en gramos.'; return; }
+    const k = 100 / unidadGramos, r2 = (v)=>Math.round(v*100)/100;
+    kcal = r2(kcal*k); prot = r2(prot*k); carb = r2(carb*k); grasa = r2(grasa*k); fibra = r2(fibra*k);
+  }
   if(editingFoodId){
     const { data: upd, error: updErr } = await sb.from('alimentos').update({
       categoria, nombre,
@@ -2934,4 +2953,3 @@ init();
 </script>
 </body>
 </html>
-
