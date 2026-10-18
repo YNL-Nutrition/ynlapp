@@ -104,12 +104,19 @@
   .chart-box{flex:0 0 220px;width:220px;text-align:center;}
   .chart-box h3{text-align:center;}
   .chart-wrap{position:relative;width:180px;height:180px;margin:0 auto;}
+  .chart-shell{position:relative;margin:14px 0;}
+  .chart-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;}
+  .chart-axis{position:absolute;left:0;top:0;display:none;pointer-events:none;background:var(--bg);}
+  .chart-inner{position:relative;height:220px;min-width:100%;}
+  .two-col{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:32px;align-items:start;}
+  .show-sm{display:none;}
   @media (max-width:640px){
+    .two-col{grid-template-columns:minmax(0,1fr);gap:8px;}
+    .hide-sm{display:none;}
+    .show-sm{display:block;margin-top:2px;word-break:break-all;}
+    .card.panel{padding:16px;}
+    .card.panel .tab-btn{padding:9px 10px;}
     .chart-wrap-wide{position:relative;height:220px;margin:14px 0;}
-    .chart-shell{position:relative;margin:14px 0;}
-    .chart-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;}
-    .chart-axis{position:absolute;left:0;top:0;display:none;pointer-events:none;background:var(--bg);}
-    .chart-inner{position:relative;height:220px;min-width:100%;}
     .chart-wrap-wide + h2{margin-top:14px;}
     input[type=number]{-moz-appearance:textfield;}
     input[type=number]::-webkit-inner-spin-button,
@@ -416,7 +423,7 @@ async function showDashboard(session){
 async function showEntrenadorDashboard(userId){
   setBrandRowVisible(true);
   app.innerHTML = `
-    <div class="card">
+    <div class="card panel">
       <div class="inline">
         <h1>Panel del entrenador</h1>
         <button class="secondary" onclick="logout()">Cerrar sesión</button>
@@ -444,14 +451,14 @@ async function switchEntrenadorTab(tab, userId){
 async function renderAsesoradosTab(userId){
   const { data: clientes } = await sb.from('clientes').select('*').eq('entrenador_id', userId).order('nombre');
   let rows = (clientes||[]).map(c=>`<tr>
-      <td>${c.nombre}</td><td>${c.email||'—'}</td><td>${c.objetivo||'—'}</td><td>${c.auth_user_id ? 'Sí' : 'No'}</td>
+      <td>${c.nombre}<div class="muted show-sm">${c.email||'—'}</div></td><td class="hide-sm">${c.email||'—'}</td><td>${c.objetivo||'—'}</td><td>${c.auth_user_id ? 'Sí' : 'No'}</td>
       <td><button class="small secondary" onclick="renderClienteDetail('${c.id}', {isSelf:false, entrenadorUserId:'${userId}'})">Ver</button></td>
     </tr>`).join('');
   document.getElementById('entrenadorTabContent').innerHTML = `
-    <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:32px;align-items:start;">
+    <div class="two-col">
       <div>
         <h2>Tus asesorados</h2>
-        <div class="scroll"><table><thead><tr><th>Nombre</th><th>Correo</th><th>Objetivo</th><th>Ya entró</th><th></th></tr></thead>
+        <div class="scroll"><table><thead><tr><th>Nombre</th><th class="hide-sm">Correo</th><th>Objetivo</th><th>Ya entró</th><th></th></tr></thead>
         <tbody>${rows || '<tr><td colspan="5" class="muted">Aún no tienes asesorados.</td></tr>'}</tbody></table></div>
       </div>
       <div>
