@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
+<meta name="app-version" content="a0b43218c4">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -831,6 +832,26 @@ let vDate = null;          // fecha activa del registro (YYYY-MM-DD)
 let vEntries = [];         // entradas del registro del día activo
 let vGoals = null;         // meta vigente
 let vRutinaDias = [];      // días de la rutina del cliente actual, con sus ejercicios anidados
+const APP_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
+let vLastUpdateCheck = 0;
+async function checkForUpdate(){
+  if(Date.now() - vLastUpdateCheck < 60000) return;
+  vLastUpdateCheck = Date.now();
+  try{
+    const res = await fetch(location.pathname + '?chk=' + Date.now(), { cache: 'no-store' });
+    if(!res.ok) return;
+    const m = (await res.text()).match(/name="app-version"\s+content="([^"]+)"/);
+    if(!m || m[1] === APP_VERSION || document.getElementById('updateBanner')) return;
+    const b = document.createElement('div');
+    b.id = 'updateBanner';
+    b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2000;background:var(--ink);color:var(--bg);text-align:center;font-size:13px;padding:calc(10px + env(safe-area-inset-top, 0px)) 12px 10px;';
+    b.innerHTML = 'Hay una versión nueva. <a href="#" style="color:inherit;font-weight:600;text-decoration:underline;" onclick="location.replace(location.pathname + \'?v=' + m[1] + '\'); return false;">Actualizar</a>';
+    document.body.appendChild(b);
+  }catch(e){}
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) checkForUpdate(); });
+window.addEventListener('load', ()=>{ setTimeout(checkForUpdate, 3000); });
+
 let vSesion = 1;           // sesión (entreno) abierta hoy para el día de rutina activo
 let vHoyDia = null;        // día de rutina que el cliente tiene activo hoy
 let vEntrenoViewDate = null; // fecha que se está viendo en Entrenamiento (hoy = editable, otra = solo lectura)
@@ -884,7 +905,7 @@ function toggleAccordionSection(id){
   body.style.display = isOpen ? 'none' : 'block';
   header.classList.toggle('active', !isOpen);
   header.querySelector('.chev').textContent = isOpen ? '▾' : '▴';
-  if(!isOpen) setTimeout(()=>body.querySelectorAll('.chart-scroll').forEach(s=>{ s.scrollLeft = s.scrollWidth; }), 80);
+  if(!isOpen) setTimeout(()=>body.querySelectorAll('.chart-scroll').forEach(s=>{ s.scrollLeft = s.scrollWidth; s.dataset.ready = '1'; }), 80);
 }
 
 function loadingHtml(){
@@ -2027,9 +2048,10 @@ async function renderNutricionTab(){
         </button>
       </div>
 
-      <h2>Historial (últimas 6 semanas)</h2>
-      <div id="weekProgress"></div>
+      <h2>Historial</h2>
       <div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="historyChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>
+      <div class="chart-legend" id="historyLegend" style="min-height:0;margin:6px 0 18px;"></div>
+      <div id="weekProgress"></div>
   `;
 
   const pesoBody = `
@@ -2606,7 +2628,7 @@ async function ensureKcalSums(desde, hasta){
     if(data.length < 1000) break;
     off += 1000;
   }
-  histDatesBetween(from0, to0).forEach(d=>{ vHistCache.sums[d] = sums[d] || 0; vHistCache.loaded.add(d); });
+  histDatesBetween(from0, to0).forEach(d=>{ if(vHistCache.loaded.has(d)) return; vHistCache.sums[d] = sums[d] || 0; vHistCache.loaded.add(d); });
 }
 
 async function renderWeekProgress(){
@@ -2614,28 +2636,33 @@ async function renderWeekProgress(){
   if(!(vGoals.kcal > 0)){ box.innerHTML = ''; return; }
   const [mon, sun] = weekRangeOf(vDate);
   await ensureKcalSums(mon, sun);
-  const today = todayStr();
-  const dates = histDatesBetween(mon, sun).filter(d=>d < today);   // solo días ya terminados
-  const consumed = dates.reduce((s, d)=>s + (vHistCache.sums[d] || 0), 0);
+  const consumed = histDatesBetween(mon, sun).reduce((s, d)=>s + (vHistCache.sums[d] || 0), 0);
   const target = vGoals.kcal * 7;
   const rem = target - consumed;
   const over = rem < 0;
   const pct = Math.min(100, (consumed / target) * 100);
   const status = over ? `${round1(-rem)} kcal sobre la meta` : `faltan ${round1(rem)} kcal`;
-  const nota = (mon <= today && today <= sun) ? ` Hoy se suma cuando termine el día.` : '';
   box.innerHTML = `<div style="margin-bottom:16px;">
     <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-bottom:3px;"><b>Semana ${shortDate(mon)} – ${shortDate(sun)}</b><span>${Math.round(consumed)} / ${target} kcal · ${status}</span></div>
     <div style="background:var(--surface);border-radius:3px;height:8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${over ? themeMuted() : themeInk()};"></div></div>
-    <div class="muted" style="font-size:11px;margin-top:4px;">Días terminados: ${dates.length} de 7.${nota}</div>
   </div>`;
 }
 
 async function renderHistoryChart(){
   const ctx = document.getElementById('historyChart');
   if(!ctx || typeof Chart==='undefined') return;
-  const NDAYS = 42;
+  if(vHistCache.cid !== vCliente.id) vHistCache = { cid: vCliente.id, sums: {}, loaded: new Set(), first: undefined };
   const today = todayStr();
-  const days = histDatesBetween(toDateStr(new Date(new Date(today+'T00:00:00').getTime() - (NDAYS - 1) * 86400000)), today);
+  if(vHistCache.first === undefined){
+    const fr = await sb.from('registro').select('fecha').eq('cliente_id', vCliente.id).order('fecha').limit(1);
+    vHistCache.first = (fr.data && fr.data[0]) ? fr.data[0].fecha : null;
+  }
+  const MAXDAYS = 90;
+  const minStart = toDateStr(new Date(new Date(today+'T00:00:00').getTime() - (MAXDAYS - 1) * 86400000));
+  let start = vHistCache.first || today;
+  if(start < minStart) start = minStart;
+  if(vDate < start && vDate >= minStart) start = vDate;
+  const days = histDatesBetween(start, today);
   await ensureKcalSums(days[0], days[days.length - 1]);
   // el día seleccionado siempre se ve en vivo
   vHistCache.sums[vDate] = vEntries.reduce((s, e)=>s + e.kcal, 0);
@@ -2644,6 +2671,7 @@ async function renderHistoryChart(){
   const kcalByDay = days.map(d=>Math.round(vHistCache.sums[d] || 0));
   const labels = days.map(d=> new Date(d+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric'}));
   const scroller = ctx.closest('.chart-scroll');
+  const visible = !!(scroller && scroller.clientWidth > 0);
   const first = !(scroller && scroller.dataset.ready);
   const prevScroll = scroller ? scroller.scrollLeft : 0;
   if(historyChart) historyChart.destroy();
@@ -2651,10 +2679,17 @@ async function renderHistoryChart(){
   historyChart = new Chart(ctx, { plugins:[fixedYAxisPlugin], type:'bar', data:{ labels, datasets:[
     { label:'Kcal', data:kcalByDay, backgroundColor: days.map(d=> d===vDate ? themeInk() : themeFaintBar()) },
     ...(vGoals.kcal>0 ? [{ label:'Meta', data: days.map(()=>vGoals.kcal), type:'line', borderColor:themeMuted(), borderDash:[5,4], pointRadius:0 }] : [])
-  ]}, options:{ maintainAspectRatio: false, plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}, scales:{y:{beginAtZero:true}},
+  ]}, options:{ maintainAspectRatio: false, plugins:{ legend:{ display:false } },
+    scales:{
+      x:{ grid:{ display:false, drawTicks:false }, border:{ display:false }, ticks:{ minRotation:0, maxRotation:0, autoSkip:false, font:{ size:10 } } },
+      y:{ beginAtZero:true, grid:{ drawTicks:false }, border:{ display:false }, ticks:{ maxTicksLimit:6 } }
+    },
     onClick:(evt,els)=>{ if(els.length){ const idx=els[0].index; document.getElementById('logDate').value=days[idx]; vDate=days[idx]; loadLogForDate(vDate); } } } });
-  if(scroller) scroller.dataset.ready = '1';
-  if(first) scrollChartToEnd('historyChart');
+  const lg = document.getElementById('historyLegend');
+  if(lg) lg.innerHTML = `<span><i style="background:${themeFaintBar()}"></i>Kcal</span>` +
+    (vGoals.kcal>0 ? `<span><i style="background:none;border-radius:0;height:0;width:14px;border-top:2px dashed ${themeMuted()};vertical-align:middle;"></i>Meta</span>` : '');
+  if(scroller && visible) scroller.dataset.ready = '1';
+  if(first){ if(visible) scrollChartToEnd('historyChart'); }
   else if(scroller) requestAnimationFrame(()=>{ scroller.scrollLeft = prevScroll; });
 }
 
@@ -2931,10 +2966,12 @@ const fixedYAxisPlugin = {
     }
     if(scroller.scrollWidth <= scroller.clientWidth + 1){ axis.style.display = 'none'; return; }
     const r = chart.currentDevicePixelRatio || window.devicePixelRatio || 1;
-    const w = Math.ceil(y.right), hgt = Math.ceil(y.bottom + 6);
-    axis.width = Math.round(w*r); axis.height = Math.round(hgt*r);
-    axis.style.width = w + 'px'; axis.style.height = hgt + 'px'; axis.style.display = 'block';
-    axis.getContext('2d').drawImage(chart.canvas, 0, 0, axis.width, axis.height, 0, 0, axis.width, axis.height);
+    const w = Math.ceil(y.right), hAxis = Math.ceil(y.bottom + 6), hFull = Math.ceil(chart.height);
+    axis.width = Math.round(w*r); axis.height = Math.round(hFull*r);
+    axis.style.width = w + 'px'; axis.style.height = hFull + 'px'; axis.style.display = 'block';
+    const actx = axis.getContext('2d');
+    actx.clearRect(0, 0, axis.width, axis.height);
+    actx.drawImage(chart.canvas, 0, 0, axis.width, Math.round(hAxis*r), 0, 0, axis.width, Math.round(hAxis*r));
   }
 };
 function fitScrollChart(canvasId, n, pxPerPoint){
