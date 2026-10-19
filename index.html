@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -108,7 +107,8 @@
   .chart-box h3{text-align:center;}
   .chart-wrap{position:relative;width:180px;height:180px;margin:0 auto;}
   .chart-shell{position:relative;margin:14px 0;}
-  .chart-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;}
+  .chart-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;scrollbar-width:none;}
+  .chart-scroll::-webkit-scrollbar{display:none;}
   .chart-axis{position:absolute;left:0;top:0;display:none;pointer-events:none;background:var(--bg);}
   .chart-inner{position:relative;height:220px;min-width:100%;}
   .two-col{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:32px;align-items:start;}
@@ -1950,19 +1950,13 @@ async function renderNutricionTab(){
   const cliente = vCliente;
   document.getElementById('clienteTabContent').innerHTML = loadingHtml();
 
-  const base = new Date(vDate+'T00:00:00');
-  const days = [];
-  for(let i=6;i>=0;i--){ const d=new Date(base); d.setDate(d.getDate()-i); days.push(toDateStr(d)); }
-  const otherDays = days.filter(d=>d!==vDate);
-
-  const [[metasRes, regRes, notasRes, pesosRes, plantillasRes, ...histRes]] = await Promise.all([
+  const [[metasRes, regRes, notasRes, pesosRes, plantillasRes]] = await Promise.all([
     Promise.all([
       sb.from('metas').select('*').eq('cliente_id', vCliente.id).order('fecha_desde', {ascending:false}).limit(1),
       sb.from('registro').select('*').eq('cliente_id', vCliente.id).eq('fecha', vDate).order('created_at'),
       sb.from('notas').select('*').eq('cliente_id', vCliente.id).eq('tipo','dia').eq('fecha', vDate).order('created_at', {ascending:false}),
       sb.from('pesos').select('*').eq('cliente_id', vCliente.id).order('fecha'),
-      sb.from('plantillas_comida').select('*, plantilla_items(*, alimentos(nombre))').eq('cliente_id', vCliente.id).order('nombre'),
-      ...otherDays.map(d=> sb.from('registro').select('kcal').eq('cliente_id', vCliente.id).eq('fecha', d))
+      sb.from('plantillas_comida').select('*, plantilla_items(*, alimentos(nombre))').eq('cliente_id', vCliente.id).order('nombre')
     ]),
     minDelay(TAB_LOADING_MIN_MS)
   ]);
@@ -1971,9 +1965,6 @@ async function renderNutricionTab(){
   vEntries = regRes.data || [];
   vWeights = pesosRes.data || [];
   vPlantillas = plantillasRes.data || [];
-  const byDate = {};
-  otherDays.forEach((d,i)=>{ byDate[d] = histRes[i].data || []; });
-  vHistoryPrecomputed = days.map(d=> d===vDate ? Math.round(vEntries.reduce((s,e)=>s+e.kcal,0)) : Math.round((byDate[d]||[]).reduce((s,e)=>s+e.kcal,0)));
 
   const metasBody = `
       <div class="grid2">
@@ -2036,7 +2027,8 @@ async function renderNutricionTab(){
         </button>
       </div>
 
-      <h2>Historial (últimos 7 días)</h2>
+      <h2>Historial (últimas 6 semanas)</h2>
+      <div id="weekProgress"></div>
       <div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="historyChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>
   `;
 
@@ -2588,36 +2580,82 @@ function renderCharts(){
   renderHistoryChart();
 }
 
+let vHistCache = { cid: null, sums: {}, loaded: new Set() };
+function histDatesBetween(a, b){
+  const out = [], d = new Date(a+'T00:00:00'), e = new Date(b+'T00:00:00');
+  while(d <= e){ out.push(toDateStr(d)); d.setDate(d.getDate() + 1); }
+  return out;
+}
+function weekRangeOf(dateStr){
+  const d = new Date(dateStr+'T00:00:00');
+  const mon = new Date(d); mon.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+  return [toDateStr(mon), toDateStr(sun)];
+}
+async function ensureKcalSums(desde, hasta){
+  if(vHistCache.cid !== vCliente.id) vHistCache = { cid: vCliente.id, sums: {}, loaded: new Set() };
+  const missing = histDatesBetween(desde, hasta).filter(d=>!vHistCache.loaded.has(d));
+  if(!missing.length) return;
+  const from0 = missing[0], to0 = missing[missing.length - 1];
+  const sums = {};
+  let off = 0;
+  while(true){
+    const { data, error } = await sb.from('registro').select('fecha,kcal').eq('cliente_id', vCliente.id).gte('fecha', from0).lte('fecha', to0).order('fecha').order('created_at').range(off, off + 999);
+    if(error || !data) return;
+    data.forEach(r=>{ sums[r.fecha] = (sums[r.fecha] || 0) + (r.kcal || 0); });
+    if(data.length < 1000) break;
+    off += 1000;
+  }
+  histDatesBetween(from0, to0).forEach(d=>{ vHistCache.sums[d] = sums[d] || 0; vHistCache.loaded.add(d); });
+}
+
+async function renderWeekProgress(){
+  const box = document.getElementById('weekProgress'); if(!box) return;
+  if(!(vGoals.kcal > 0)){ box.innerHTML = ''; return; }
+  const [mon, sun] = weekRangeOf(vDate);
+  await ensureKcalSums(mon, sun);
+  const today = todayStr();
+  const dates = histDatesBetween(mon, sun).filter(d=>d < today);   // solo días ya terminados
+  const consumed = dates.reduce((s, d)=>s + (vHistCache.sums[d] || 0), 0);
+  const target = vGoals.kcal * 7;
+  const rem = target - consumed;
+  const over = rem < 0;
+  const pct = Math.min(100, (consumed / target) * 100);
+  const status = over ? `${round1(-rem)} kcal sobre la meta` : `faltan ${round1(rem)} kcal`;
+  const nota = (mon <= today && today <= sun) ? ` Hoy se suma cuando termine el día.` : '';
+  box.innerHTML = `<div style="margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;gap:8px;font-size:13px;margin-bottom:3px;"><b>Semana ${shortDate(mon)} – ${shortDate(sun)}</b><span>${Math.round(consumed)} / ${target} kcal · ${status}</span></div>
+    <div style="background:var(--surface);border-radius:3px;height:8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${over ? themeMuted() : themeInk()};"></div></div>
+    <div class="muted" style="font-size:11px;margin-top:4px;">Días terminados: ${dates.length} de 7.${nota}</div>
+  </div>`;
+}
+
 async function renderHistoryChart(){
   const ctx = document.getElementById('historyChart');
   if(!ctx || typeof Chart==='undefined') return;
-  const base = new Date(vDate+'T00:00:00');
-  const days = [];
-  for(let i=6;i>=0;i--){ const d=new Date(base); d.setDate(d.getDate()-i); days.push(toDateStr(d)); }
-  let kcalByDay;
-  if(vHistoryPrecomputed){
-    kcalByDay = vHistoryPrecomputed;
-    vHistoryPrecomputed = null;
-  } else {
-    const otherDays = days.filter(d=>d!==vDate);
-    const results = await Promise.all(otherDays.map(d=> sb.from('registro').select('kcal').eq('cliente_id', vCliente.id).eq('fecha', d)));
-    const byDate = {};
-    otherDays.forEach((d,i)=>{ byDate[d] = results[i].data || []; });
-    kcalByDay = days.map(d=>{
-      const entries = d===vDate ? vEntries : byDate[d];
-      return Math.round(entries.reduce((s,e)=>s+e.kcal,0));
-    });
-  }
+  const NDAYS = 42;
+  const today = todayStr();
+  const days = histDatesBetween(toDateStr(new Date(new Date(today+'T00:00:00').getTime() - (NDAYS - 1) * 86400000)), today);
+  await ensureKcalSums(days[0], days[days.length - 1]);
+  // el día seleccionado siempre se ve en vivo
+  vHistCache.sums[vDate] = vEntries.reduce((s, e)=>s + e.kcal, 0);
+  vHistCache.loaded.add(vDate);
+  renderWeekProgress();
+  const kcalByDay = days.map(d=>Math.round(vHistCache.sums[d] || 0));
   const labels = days.map(d=> new Date(d+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric'}));
+  const scroller = ctx.closest('.chart-scroll');
+  const first = !(scroller && scroller.dataset.ready);
+  const prevScroll = scroller ? scroller.scrollLeft : 0;
   if(historyChart) historyChart.destroy();
-  const isMobileHist = window.matchMedia('(max-width:640px)').matches;
   fitScrollChart('historyChart', days.length, 46);
   historyChart = new Chart(ctx, { plugins:[fixedYAxisPlugin], type:'bar', data:{ labels, datasets:[
     { label:'Kcal', data:kcalByDay, backgroundColor: days.map(d=> d===vDate ? themeInk() : themeFaintBar()) },
     ...(vGoals.kcal>0 ? [{ label:'Meta', data: days.map(()=>vGoals.kcal), type:'line', borderColor:themeMuted(), borderDash:[5,4], pointRadius:0 }] : [])
   ]}, options:{ maintainAspectRatio: false, plugins:{legend:{position:'bottom',labels:{font:{size:10}}}}, scales:{y:{beginAtZero:true}},
     onClick:(evt,els)=>{ if(els.length){ const idx=els[0].index; document.getElementById('logDate').value=days[idx]; vDate=days[idx]; loadLogForDate(vDate); } } } });
-  scrollChartToEnd('historyChart');
+  if(scroller) scroller.dataset.ready = '1';
+  if(first) scrollChartToEnd('historyChart');
+  else if(scroller) requestAnimationFrame(()=>{ scroller.scrollLeft = prevScroll; });
 }
 
 // ---------- Notas ----------
@@ -2887,6 +2925,10 @@ const fixedYAxisPlugin = {
     const scroller = shell.querySelector('.chart-scroll');
     const y = chart.scales && chart.scales.y;
     if(!axis || !scroller || !y) return;
+    if(!scroller._axisBound){
+      scroller._axisBound = true;
+      scroller.addEventListener('scroll', ()=>{ axis.style.transform = scroller.scrollLeft < 0 ? `translateX(${-scroller.scrollLeft}px)` : ''; }, { passive:true });
+    }
     if(scroller.scrollWidth <= scroller.clientWidth + 1){ axis.style.display = 'none'; return; }
     const r = chart.currentDevicePixelRatio || window.devicePixelRatio || 1;
     const w = Math.ceil(y.right), hgt = Math.ceil(y.bottom + 6);
@@ -2913,7 +2955,7 @@ function lineChartOptions(isMobile){
     maintainAspectRatio: false,
     plugins:{ legend:{ display:false } },
     scales:{
-      x:{ grid:{ display:false, drawTicks:false }, border:{ display:false }, ticks:{ minRotation:0, maxRotation:0, autoSkip:true, maxTicksLimit: isMobile ? 6 : 10 } },
+      x:{ offset:true, grid:{ display:false, drawTicks:false }, border:{ display:false }, ticks:{ minRotation:0, maxRotation:0, autoSkip:true, maxTicksLimit: isMobile ? 6 : 10 } },
       y:{ grid:{ drawTicks:false }, border:{ display:false }, ticks:{ maxTicksLimit:5 } }
     }
   };
@@ -2992,3 +3034,4 @@ init();
 </script>
 </body>
 </html>
+
