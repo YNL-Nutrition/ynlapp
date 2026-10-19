@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="a0b43218c4">
+<meta name="app-version" content="3cf226f622">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -107,6 +107,7 @@
   .chart-box{flex:0 0 220px;width:220px;text-align:center;}
   .chart-box h3{text-align:center;}
   .chart-wrap{position:relative;width:180px;height:180px;margin:0 auto;}
+  #entrenoViewDate::-webkit-date-and-time-value{text-align:center;}
   .chart-shell{position:relative;margin:14px 0;}
   .chart-scroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;overscroll-behavior-x:none;scrollbar-width:none;}
   .chart-scroll::-webkit-scrollbar{display:none;}
@@ -1167,7 +1168,7 @@ async function renderDiaForDate(){
     <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
       <div style="display:flex;flex-direction:column;">
         <label style="font-size:11px;color:var(--muted);margin-bottom:3px;">Fecha</label>
-        <input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:100px;font-weight:600;height:38px;box-sizing:border-box;">
+        <input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:128px;font-weight:600;height:38px;box-sizing:border-box;text-align:center;padding:0 6px;">
       </div>
       ${(isToday && dia.tipo==='gym') ? `<div style="display:flex;flex-direction:column;">
         <label style="font-size:11px;color:var(--muted);margin-bottom:3px;">Duración</label>
@@ -3071,4 +3072,5 @@ init();
 </script>
 </body>
 </html>
+
 
