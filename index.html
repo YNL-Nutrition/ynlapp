@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="30704a0d94">
+<meta name="app-version" content="15990c9cc2">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -1176,23 +1176,26 @@ async function renderDiaForDate(){
     ? await buildMiEntrenoExsHtml(dia, vEntrenoViewDate, isToday)
     : await buildMiEntrenoRunHtml(dia, vEntrenoViewDate, isToday);
   document.getElementById('miEntrenoDiaContent').innerHTML = `
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
+    ${dia.tipo==='gym' ? `<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;">
       <div style="display:flex;flex-direction:column;">
-        <label style="font-size:11px;color:var(--muted);margin-bottom:3px;">Fecha</label>
-        <input type="date" id="entrenoViewDate" value="${vEntrenoViewDate}" max="${todayStr()}" onchange="onEntrenoDateChange()" style="width:128px;font-weight:600;height:38px;box-sizing:border-box;text-align:center;padding:0 6px;">
+        <label style="font-size:11px;color:var(--muted);margin-bottom:3px;">Entreno</label>
+        <button id="entrenoIniciarBtn" onclick="iniciarEntreno()" style="width:128px;height:38px;padding:0;font-weight:600;">Iniciar</button>
       </div>
-      ${(isToday && dia.tipo==='gym') ? `<div style="display:flex;flex-direction:column;">
+      <div style="display:flex;flex-direction:column;">
         <label style="font-size:11px;color:var(--muted);margin-bottom:3px;">Duración</label>
         <div style="border:1px solid var(--border);border-radius:4px;padding:0 10px;font-size:15px;font-weight:600;height:38px;width:100px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;" id="entrenoDuracion">--:--:--</div>
-      </div>` : ''}
-    </div>
+      </div>
+    </div>` : ''}
     ${(isToday && vSesion > 1) ? `<p class="muted" style="margin:-6px 0 12px;font-size:12px;">Entreno ${vSesion} de hoy</p>` : ''}
     ${bodyHtml}
     ${isToday ? `<div class="inline" style="margin-top:18px;">
       ${dia.tipo!=='gym' ? `<button class="secondary" onclick="guardarProgresoDia(false)">Guardar progreso</button>` : ''}
       <button onclick="guardarProgresoDia(true)">Completar día y avanzar</button>
     </div>` : `<p class="muted" style="margin-top:12px;">Viendo historial — no editable.</p>`}`;
-  if(isToday && dia.tipo==='gym' && Object.values(miEntrenoState).some(s=>s.expanded)) ensureEntrenoTimerStarted();
+  if(isToday && dia.tipo==='gym'){
+    actualizarBotonIniciar();
+    if(entrenoIniciado()) ensureEntrenoTimerStarted();
+  }
 }
 
 async function selectDiaTab(diaId){
@@ -1386,17 +1389,36 @@ function formatMinSec(secs){
   return `${m}:${s}`;
 }
 
+function entrenoIniciado(){
+  try{ return parseInt(localStorage.getItem(entrenoTimerKey())) > 0; }catch(e){ return false; }
+}
+function actualizarBotonIniciar(){
+  const b = document.getElementById('entrenoIniciarBtn'); if(!b) return;
+  const on = entrenoIniciado();
+  b.textContent = on ? 'En curso' : 'Iniciar';
+  b.className = on ? 'secondary' : '';
+  b.disabled = on;
+  b.style.opacity = '1';
+  b.style.cursor = on ? 'default' : 'pointer';
+}
+function iniciarEntreno(){
+  unlockAudio();
+  const key = entrenoTimerKey();
+  if(!(parseInt(localStorage.getItem(key)) > 0)){
+    try{ localStorage.setItem(key, String(Date.now())); }catch(e){}
+  }
+  ensureEntrenoTimerStarted();
+  actualizarBotonIniciar();
+}
+
 function ensureEntrenoTimerStarted(){
   const key = entrenoTimerKey();
   if(vEntrenoTimerInterval){
     if(vEntrenoTimerKey === key) return;
     clearEntrenoTimer();   // quedó de otro día o de otro entreno: se reinicia
   }
-  let start = parseInt(localStorage.getItem(key));
-  if(!start){
-    start = Date.now();
-    localStorage.setItem(key, String(start));
-  }
+  const start = parseInt(localStorage.getItem(key));
+  if(!start) return;   // el cronómetro solo corre después de tocar Iniciar
   vEntrenoTimerKey = key;
   vEntrenoTimerStart = start;
   tickEntrenoTimer();
@@ -1603,6 +1625,7 @@ function playTimbre(){
 
 async function guardarSerie(ej){
   unlockAudio();
+  if(!entrenoIniciado()){ alert('Toca Iniciar para empezar el entreno antes de registrar series.'); return; }
   const rm = document.getElementById('restMin');
   if(rm && rm.value && !vRestDurationSeconds) setRestDuration(rm.value);
   captureSerieInputs(ej);
@@ -2987,6 +3010,8 @@ async function renderProgresoTab(){
   vFotosCargadas = false;
   vPesoChartCargado = false;
   vExChartCargado = false;
+  vHistCargado = false;
+  vHE = null;
 
   const pesoBody = `<div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="progresoPesoChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>`;
   const ejerciciosBody = exList.length ? `
@@ -3010,18 +3035,149 @@ async function renderProgresoTab(){
   document.getElementById('clienteTabContent').innerHTML = wrapAccordionList(
     accordionSectionHtml('progPeso', 'Peso corporal', pesoBody, false)
     + accordionSectionHtml('progEj', 'Ejercicios', ejerciciosBody, false)
+    + accordionSectionHtml('progHist', 'Historial', '<div id="historialEntrenos"></div>', false)
     + accordionSectionHtml('progFotos', 'Fotos', fotosBody, false)
   );
 
   // Cargar la gráfica/fotos de cada sección solo la primera vez que se abre
-  ['progPeso','progEj','progFotos'].forEach(id=>{
+  ['progPeso','progEj','progHist','progFotos'].forEach(id=>{
     const header = document.querySelector(`#secBody_${id}`).previousElementSibling;
     header.addEventListener('click', ()=>{
       if(id==='progPeso') ensureProgresoPesoChart();
       if(id==='progEj') ensureProgresoExChartSection();
+      if(id==='progHist' && !vHistCargado){ vHistCargado = true; cargarHistorialEntrenos(false); }
       if(id==='progFotos' && !vFotosCargadas){ vFotosCargadas = true; loadFotosProgreso(); }
     });
   });
+}
+
+// ---------- Historial de entrenos (Progreso) ----------
+let vHistCargado = false, vHE = null;
+
+function heFecha(f){
+  const s = new Date(f + 'T00:00:00').toLocaleDateString('es-CO', { weekday:'short', day:'numeric', month:'short' }).replace(',', '').replace(' de ', ' ');
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+async function fetchAllPages(build){
+  const out = [];
+  let off = 0;
+  while(true){
+    const { data, error } = await build().range(off, off + 999);
+    if(error) return { error, data: out };
+    out.push(...(data || []));
+    if(!data || data.length < 1000) break;
+    off += 1000;
+  }
+  return { data: out };
+}
+
+async function cargarHistorialEntrenos(mas){
+  const box = document.getElementById('historialEntrenos'); if(!box) return;
+  const today = todayStr();
+  if(!mas || !vHE || vHE.cid !== vCliente.id){
+    vHE = { cid: vCliente.id, grupos: {}, next: today, min: null, hayMas: false, open: {} };
+    box.innerHTML = loadingHtml();
+    const [a, b] = await Promise.all([
+      sb.from('registro_entreno').select('fecha').eq('cliente_id', vCliente.id).order('fecha').limit(1),
+      sb.from('registro_running').select('fecha').eq('cliente_id', vCliente.id).order('fecha').limit(1)
+    ]);
+    const mins = [a.data && a.data[0] && a.data[0].fecha, b.data && b.data[0] && b.data[0].fecha].filter(Boolean).sort();
+    vHE.min = mins[0] || null;
+  }
+  if(!vHE.min){ box.innerHTML = '<p class="muted">Aún no hay entrenamientos registrados.</p>'; return; }
+  const hasta = vHE.next;
+  const desde = toDateStr(new Date(new Date(hasta + 'T00:00:00').getTime() - 59 * 86400000));
+  const [gym, run, comp] = await Promise.all([
+    fetchAllPages(()=>sb.from('registro_entreno').select('*, ejercicios(nombre)').eq('cliente_id', vCliente.id).gte('fecha', desde).lte('fecha', hasta).order('fecha', { ascending:false }).order('ejercicio_id').order('numero_serie')),
+    fetchAllPages(()=>sb.from('registro_running').select('*').eq('cliente_id', vCliente.id).gte('fecha', desde).lte('fecha', hasta).order('fecha', { ascending:false }).order('sesion')),
+    fetchAllPages(()=>sb.from('entrenos_completados').select('fecha,dia_id,sesion').eq('cliente_id', vCliente.id).gte('fecha', desde).lte('fecha', hasta).order('fecha'))
+  ]);
+  if(gym.error || run.error){
+    box.innerHTML = `<p class="muted">No se pudo cargar el historial: ${escHtml((gym.error || run.error).message)}</p>`;
+    return;
+  }
+  const done = new Set((comp.data || []).map(r=>`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
+  const add = (r, tipo)=>{
+    const k = `${r.fecha}|${r.dia_id}|${r.sesion || 1}`;
+    if(!vHE.grupos[k]) vHE.grupos[k] = { key: k, fecha: r.fecha, diaId: r.dia_id, sesion: r.sesion || 1, tipo, rows: [], done: done.has(k) };
+    vHE.grupos[k].rows.push(r);
+  };
+  gym.data.forEach(r=>add(r, 'gym'));
+  run.data.forEach(r=>add(r, 'run'));
+  vHE.next = toDateStr(new Date(new Date(desde + 'T00:00:00').getTime() - 86400000));
+  vHE.hayMas = desde > vHE.min;
+  renderHistorialEntrenos();
+}
+
+function renderHistorialEntrenos(){
+  const box = document.getElementById('historialEntrenos'); if(!box || !vHE) return;
+  const lista = Object.values(vHE.grupos).sort((a, b)=> b.fecha.localeCompare(a.fecha) || b.sesion - a.sesion);
+  vHE.lista = lista;
+  if(!lista.length && !vHE.hayMas){ box.innerHTML = '<p class="muted">Aún no hay entrenamientos registrados.</p>'; return; }
+  const porDia = {};
+  lista.forEach(g=>{ const k = g.fecha + '|' + g.diaId; porDia[k] = (porDia[k] || 0) + 1; });
+  const esEntrenador = !(vOpts && vOpts.isSelf);
+  const nf = new Intl.NumberFormat('es-CO');
+  let html = '';
+  lista.forEach((g, i)=>{
+    const dia = vRutinaDias.find(d=>d.id === g.diaId);
+    const nombre = dia ? dia.nombre : 'Entreno';
+    const multi = porDia[g.fecha + '|' + g.diaId] > 1;
+    let detalle = '';
+    if(g.tipo === 'gym'){
+      const orden = {};
+      ((dia && dia.ejercicios) || []).forEach((re, n)=>{ orden[re.ejercicio_id] = n; });
+      const porEj = {};
+      g.rows.forEach(r=>{ (porEj[r.ejercicio_id] = porEj[r.ejercicio_id] || []).push(r); });
+      const ids = Object.keys(porEj).sort((a, b)=>(orden[a] ?? 999) - (orden[b] ?? 999));
+      const vol = g.rows.reduce((s, r)=>s + ((r.peso != null && r.reps != null) ? r.peso * r.reps : 0), 0);
+      detalle = `<div class="muted" style="font-size:12px;margin-bottom:6px;">${g.rows.length} ${g.rows.length === 1 ? 'serie' : 'series'} · ${nf.format(Math.round(vol))} kg de volumen</div>` + ids.map(id=>{
+        const rs = porEj[id].sort((a, b)=>a.numero_serie - b.numero_serie);
+        const ej = rs[0].ejercicios;
+        return `<div style="margin-top:12px;"><div style="font-weight:600;font-size:14px;">${escHtml(ej ? ej.nombre : '')}</div>
+          <div class="scroll"><table><thead><tr><th>Serie</th><th>Peso (kg)</th><th>Reps</th></tr></thead><tbody>
+          ${rs.map(r=>`<tr><td>${r.numero_serie}</td><td>${r.peso ?? '—'}</td><td>${r.reps ?? '—'}</td></tr>`).join('')}
+          </tbody></table></div></div>`;
+      }).join('');
+    } else {
+      const r = g.rows[0];
+      detalle = `<div class="scroll"><table><thead><tr><th>Distancia</th><th>Tiempo</th><th>Pace</th><th>FC prom.</th><th>Cadencia</th></tr></thead><tbody>
+        <tr><td>${r.distancia_km ?? '—'} km</td><td>${r.tiempo_min ?? '—'} min</td><td>${escHtml(r.pace ?? '—')}</td><td>${r.fc_promedio ?? '—'}</td><td>${r.cadencia ?? '—'}</td></tr></tbody></table></div>`
+        + (r.notas ? `<div class="muted" style="font-size:12px;margin-top:8px;">${escHtml(r.notas)}</div>` : '');
+    }
+    const abierto = !!vHE.open[g.key];
+    html += `<div class="card" style="padding:0;margin-bottom:10px;">
+      <div onclick="toggleHE(${i})" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;">
+        <div><b>${heFecha(g.fecha)}</b><div class="muted" style="font-size:12px;">${escHtml(nombre)}${multi ? ' · Entreno ' + g.sesion : ''}</div></div>
+        <span class="muted" style="font-size:12px;">${g.done ? 'Completado' : 'Sin completar'}</span>
+      </div>
+      <div id="he_${i}" style="display:${abierto ? 'block' : 'none'};padding:0 14px 14px;">${detalle}
+        ${esEntrenador ? `<div style="margin-top:14px;text-align:right;"><button class="small secondary" onclick="eliminarEntrenoHist(${i})">Eliminar entreno</button></div>` : ''}
+      </div></div>`;
+  });
+  if(vHE.hayMas) html += `<div style="text-align:center;margin-top:6px;"><button class="secondary" onclick="cargarHistorialEntrenos(true)">Ver anteriores</button></div>`;
+  box.innerHTML = html;
+}
+
+function toggleHE(i){
+  const g = vHE && vHE.lista && vHE.lista[i]; if(!g) return;
+  const el = document.getElementById('he_' + i); if(!el) return;
+  const abrir = el.style.display === 'none';
+  el.style.display = abrir ? 'block' : 'none';
+  vHE.open[g.key] = abrir;
+}
+
+async function eliminarEntrenoHist(i){
+  const g = vHE && vHE.lista && vHE.lista[i]; if(!g) return;
+  const dia = vRutinaDias.find(d=>d.id === g.diaId);
+  if(!confirm(`¿Eliminar el entreno del ${heFecha(g.fecha)} (${dia ? dia.nombre : 'Entreno'})? No se puede deshacer.`)) return;
+  const tabla = g.tipo === 'gym' ? 'registro_entreno' : 'registro_running';
+  const r1 = await sb.from(tabla).delete().eq('cliente_id', vCliente.id).eq('fecha', g.fecha).eq('dia_id', g.diaId).eq('sesion', g.sesion).select();
+  if(r1.error){ alert('No se pudo eliminar: ' + r1.error.message); return; }
+  if((r1.data || []).length === 0 && g.rows.length > 0){ alert('No se pudo eliminar. Puede ser un tema de permisos en Supabase; avísame y lo revisamos.'); return; }
+  await sb.from('entrenos_completados').delete().eq('cliente_id', vCliente.id).eq('fecha', g.fecha).eq('dia_id', g.diaId).eq('sesion', g.sesion);
+  delete vHE.grupos[g.key];
+  renderHistorialEntrenos();
 }
 
 function ensureProgresoPesoChart(){
@@ -3219,7 +3375,7 @@ window.onFotoFileSelected=onFotoFileSelected; window.deleteFotoProgreso=deleteFo
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
-window.renderTrainerHistDay=renderTrainerHistDay; window.setShareColor=setShareColor; window.compartirSticker=compartirSticker; window.copiarSticker=copiarSticker; window.continuarResumen=continuarResumen; window.openEditEntry=openEditEntry; window.closeEditEntry=closeEditEntry; window.saveEditEntry=saveEditEntry; window.onEditEntryFoodChange=onEditEntryFoodChange; window.onEditEntryModeChange=onEditEntryModeChange;
+window.renderTrainerHistDay=renderTrainerHistDay; window.iniciarEntreno=iniciarEntreno; window.toggleHE=toggleHE; window.eliminarEntrenoHist=eliminarEntrenoHist; window.cargarHistorialEntrenos=cargarHistorialEntrenos; window.setShareColor=setShareColor; window.compartirSticker=compartirSticker; window.copiarSticker=copiarSticker; window.continuarResumen=continuarResumen; window.openEditEntry=openEditEntry; window.closeEditEntry=closeEditEntry; window.saveEditEntry=saveEditEntry; window.onEditEntryFoodChange=onEditEntryFoodChange; window.onEditEntryModeChange=onEditEntryModeChange;
 window.openPlantillaModal=openPlantillaModal; window.closePlantillaModal=closePlantillaModal; window.savePlantilla=savePlantilla;
 window.addPlantillaRow=addPlantillaRow; window.removePlantillaRow=removePlantillaRow; window.updPlantillaRow=updPlantillaRow;
 window.togglePlantillaChip=togglePlantillaChip; window.aplicarPlantilla=aplicarPlantilla; window.eliminarPlantilla=eliminarPlantilla; window.refreshPlantillasList=refreshPlantillasList;
