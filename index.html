@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="5e63c97468">
+<meta name="app-version" content="30704a0d94">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -834,6 +834,17 @@ let vEntries = [];         // entradas del registro del día activo
 let vGoals = null;         // meta vigente
 let vRutinaDias = [];      // días de la rutina del cliente actual, con sus ejercicios anidados
 const APP_VERSION = (document.querySelector('meta[name="app-version"]') || {}).content || '';
+function limpiarClavesViejas(){
+  try{
+    const lim = toDateStr(new Date(Date.now() - 2 * 86400000));
+    Object.keys(localStorage).forEach(k=>{
+      if(!k.startsWith('ynl_entreno_start_') && !k.startsWith('ynl_draft_')) return;
+      const m = k.match(/(\d{4}-\d{2}-\d{2})/);
+      if(m && m[1] < lim) localStorage.removeItem(k);
+    });
+  }catch(e){}
+}
+window.addEventListener('load', limpiarClavesViejas);
 let vLastUpdateCheck = 0;
 async function checkForUpdate(){
   if(Date.now() - vLastUpdateCheck < 60000) return;
@@ -864,7 +875,7 @@ let vPlantillaDraftItems = [];
 let vFotosProgreso = [];
 let vFotosCargadas = false;
 let vPesoChartCargado = false, vExChartCargado = false;
-let vEntrenoTimerStart = null, vEntrenoTimerInterval = null;
+let vEntrenoTimerStart = null, vEntrenoTimerInterval = null, vEntrenoTimerKey = null;
 let vRestTimerEnd = null, vRestTimerInterval = null;
 let vRestDurationSeconds = null, vRestRemainingSeconds = null;
 let vAudioCtx = null;
@@ -1376,13 +1387,17 @@ function formatMinSec(secs){
 }
 
 function ensureEntrenoTimerStarted(){
-  if(vEntrenoTimerInterval) return;
   const key = entrenoTimerKey();
+  if(vEntrenoTimerInterval){
+    if(vEntrenoTimerKey === key) return;
+    clearEntrenoTimer();   // quedó de otro día o de otro entreno: se reinicia
+  }
   let start = parseInt(localStorage.getItem(key));
   if(!start){
     start = Date.now();
     localStorage.setItem(key, String(start));
   }
+  vEntrenoTimerKey = key;
   vEntrenoTimerStart = start;
   tickEntrenoTimer();
   vEntrenoTimerInterval = setInterval(tickEntrenoTimer, 1000);
@@ -1402,6 +1417,7 @@ function tickEntrenoTimer(){
 function clearEntrenoTimer(){
   if(vEntrenoTimerInterval){ clearInterval(vEntrenoTimerInterval); vEntrenoTimerInterval = null; }
   vEntrenoTimerStart = null;
+  vEntrenoTimerKey = null;
 }
 
 // ---------- Recordar dónde estabas (si el celular recarga la página) ----------
@@ -1869,7 +1885,7 @@ async function guardarProgresoDia(avanzar){
       if(comp.error){ alert('No se pudo marcar el entreno como completado: ' + comp.error.message); return; }
     }
     if(dia.tipo === 'gym'){
-      let startMs = vEntrenoTimerStart;
+      let startMs = (vEntrenoTimerKey === entrenoTimerKey()) ? vEntrenoTimerStart : null;
       if(!startMs){ try{ startMs = parseInt(localStorage.getItem(entrenoTimerKey())); }catch(e){} }
       if(startMs) durSeg = (Date.now() - startMs) / 1000;
     }
@@ -3214,5 +3230,6 @@ init();
 </script>
 </body>
 </html>
+
 
 
