@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="93e0be2f53">
+<meta name="app-version" content="eb937ff7cd">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -1743,6 +1743,17 @@ function fmtDuracion(sec){
   return r === 0 ? `${hh}h` : `${hh}h ${r}min`;
 }
 
+function paceTexto(pace, km, min){
+  if(pace && String(pace).trim()) return String(pace).trim();
+  if(km > 0 && min > 0){
+    const p = min / km;
+    let mm = Math.floor(p), ss = Math.round((p - mm) * 60);
+    if(ss === 60){ mm += 1; ss = 0; }
+    return `${mm}:${String(ss).padStart(2, '0')}`;
+  }
+  return '';
+}
+
 function cargarLogo(){
   if(vLogoImg) return Promise.resolve(vLogoImg);
   return new Promise((res, rej)=>{
@@ -1781,12 +1792,24 @@ async function dibujarSticker(info, color){
   t.globalCompositeOperation = 'source-in'; t.fillStyle = rgb; t.fillRect(0, 0, lw, logoH);
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const ctx = cv.getContext('2d');
-  ctx.font = `400 ${fs}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif`;
   ctx.textBaseline = 'middle';
-  const textos = [info.dia, info.rutina];
-  if(info.durSeg) textos.push(fmtDuracion(info.durSeg));
-  const anchos = textos.map(s=>ctx.measureText(s).width);
-  const gap = (W - 2 * pad - lw - anchos.reduce((a, b)=>a + b, 0)) / textos.length;
+  const nf = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 2 });
+  const dur = info.durSeg ? fmtDuracion(info.durSeg) : '—';
+  let textos;
+  if(info.tipo === 'run'){
+    const pace = paceTexto(info.pace, info.km, info.durSeg ? info.durSeg / 60 : null);
+    textos = [info.dia, info.km ? `${nf.format(info.km)} km` : '—', pace ? `${pace} /km` : '—', dur];
+  } else {
+    textos = [info.dia, info.rutina, dur, (info.volKg != null) ? `${nf.format(Math.round(info.volKg))} kg` : '—'];
+  }
+  let fsz = fs, anchos, gap;
+  const medir = ()=>{
+    ctx.font = `400 ${fsz}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif`;
+    anchos = textos.map(s=>ctx.measureText(s).width);
+    gap = (W - 2 * pad - lw - anchos.reduce((a, b)=>a + b, 0)) / textos.length;
+  };
+  medir();
+  while(gap < 22 * sc && fsz > 22 * sc){ fsz -= 2; medir(); }   // si no cabe, el texto se achica
   ctx.shadowColor = halo; ctx.shadowBlur = Math.round(5 * sc);
   ctx.drawImage(tmp, pad, pad);
   ctx.fillStyle = rgb;
@@ -1882,7 +1905,16 @@ function compartirEntrenoHist(i){
   const g = vHE && vHE.lista && vHE.lista[i]; if(!g) return;
   const dia = vRutinaDias.find(d=>d.id === g.diaId);
   const dSem = capitalize(new Date(g.fecha + 'T00:00:00').toLocaleDateString('es-CO', { weekday: 'long' }));
-  showEntrenoResumen({ dia: dSem, rutina: dia ? dia.nombre : 'Entreno', durSeg: g.dur || null, volver: 'progreso' });
+  const tipo = g.tipo === 'gym' ? 'gym' : 'run';
+  let durSeg = g.dur || null, volKg = null, km = null, pace = null;
+  if(tipo === 'gym'){
+    volKg = g.rows.reduce((s, r)=>s + ((r.peso != null && r.reps != null) ? r.peso * r.reps : 0), 0);
+  } else {
+    const r = g.rows[0] || {};
+    km = r.distancia_km; pace = r.pace;
+    if(r.tiempo_min) durSeg = r.tiempo_min * 60;
+  }
+  showEntrenoResumen({ tipo, dia: dSem, rutina: dia ? dia.nombre : 'Entreno', durSeg, volKg, km, pace, volver: 'progreso' });
 }
 
 async function guardarProgresoDia(avanzar){
@@ -1890,7 +1922,7 @@ async function guardarProgresoDia(avanzar){
   const today = todayStr();
   if(avanzar && !confirm('¿Completar este entreno? Después ya no podrás editarlo.')) return;
   let hayRegistro = false;
-  let durSeg = null;
+  let durSeg = null, volKg = null, runKm = null, runPace = null;
   if(dia.tipo === 'gym'){
     Object.keys(miEntrenoState).forEach(ej=>captureSerieInputs(ej));
     const rows = [];
@@ -1907,6 +1939,7 @@ async function guardarProgresoDia(avanzar){
       if(ins.error){ alert('No se pudo guardar: ' + ins.error.message); return; }
     }
     hayRegistro = rows.length > 0;
+    volKg = rows.reduce((s, r)=>s + ((r.peso != null && r.reps != null) ? r.peso * r.reps : 0), 0);
   } else {
     const num = (id)=>{ const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? null : v; };
     const payload = {
@@ -1918,6 +1951,7 @@ async function guardarProgresoDia(avanzar){
     };
     hayRegistro = [payload.distancia_km, payload.tiempo_min, payload.pace, payload.fc_promedio, payload.cadencia, payload.notas].some(v=>v !== null);
     if(payload.tiempo_min) durSeg = payload.tiempo_min * 60;
+    runKm = payload.distancia_km; runPace = payload.pace;
     await sb.from('registro_running').delete().eq('cliente_id', vCliente.id).eq('fecha', today).eq('dia_id', dia.id).eq('sesion', vSesion);
     if(hayRegistro){
       const ins = await sb.from('registro_running').insert(payload);
@@ -1949,7 +1983,7 @@ async function guardarProgresoDia(avanzar){
   navSave({ diaId:null, exp:[], act:{} });
   if(avanzar && hayRegistro){
     const dSem = capitalize(new Date().toLocaleDateString('es-CO', { weekday: 'long' }));
-    await showEntrenoResumen({ dia: dSem, rutina: dia.nombre, durSeg });
+    await showEntrenoResumen({ tipo: dia.tipo === 'gym' ? 'gym' : 'run', dia: dSem, rutina: dia.nombre, durSeg, volKg, km: runKm, pace: runPace });
   } else {
     await renderMiEntrenamiento();
   }
@@ -3108,8 +3142,8 @@ function renderHistorialEntrenos(){
     const abierto = !!vHE.open[g.key];
     html += `<div class="card" style="padding:0;margin-bottom:10px;">
       <div onclick="toggleHE(${i})" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;">
-        <div><b>${escHtml(nombre)}${multi ? ' · Entreno ' + g.sesion : ''}</b><div class="muted" style="font-size:12px;">${heFecha(g.fecha)}${g.done ? '' : ' · sin completar'}</div></div>
-        ${g.done ? `<button class="icon-btn" title="Compartir sticker" aria-label="Compartir sticker" onclick="event.stopPropagation();compartirEntrenoHist(${i})" style="padding:6px;">${ICO.share}</button>` : ''}
+        <div><b>${escHtml(nombre)}${multi ? ' · Entreno ' + g.sesion : ''}</b><div class="muted" style="font-size:12px;">${heFecha(g.fecha)}</div></div>
+        <button class="icon-btn" title="Compartir sticker" aria-label="Compartir sticker" onclick="event.stopPropagation();compartirEntrenoHist(${i})" style="padding:6px;">${ICO.share}</button>
       </div>
       <div id="he_${i}" style="display:${abierto ? 'block' : 'none'};padding:0 14px 14px;">${detalle}
         <div style="margin-top:14px;text-align:right;"><button class="small secondary" onclick="eliminarEntrenoHist(${i})">Eliminar entreno</button></div>
@@ -3346,6 +3380,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
