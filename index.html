@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="8c2198f373">
+<meta name="app-version" content="93e0be2f53">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -1802,11 +1802,11 @@ async function actualizarSticker(){
   vShareUrl = URL.createObjectURL(vShareBlob);
   const box = document.getElementById('sharePreview');
   if(!box) return;
-  box.style.background = vShareColor === 'negro' ? '#E3E2DD' : '#222222';
+  box.style.background = '#7D7D82';   // gris neutro: se ve el sticker en ambos colores
   box.innerHTML = `<img src="${vShareUrl}" alt="Sticker" style="width:100%;display:block;">`;
   ['hueso','negro'].forEach(c=>{
     const b = document.getElementById('shareColor_' + c);
-    if(b) b.className = (c === vShareColor) ? 'small' : 'small secondary';
+    if(b){ b.style.outline = (c === vShareColor) ? '2px solid var(--ink)' : 'none'; b.style.outlineOffset = '3px'; }
   });
 }
 
@@ -1816,6 +1816,7 @@ const ICO = {
   share: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg>',
   copy: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
   next: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18c1-7 6-11 14-11"/><path d="M14 3l4 4-4 4"/></svg>',
+  close: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>',
   check: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>'
 };
 
@@ -1825,14 +1826,14 @@ async function showEntrenoResumen(info){
   wrap.innerHTML = `<div style="text-align:center;">
     <h2 style="margin-top:8px;">Entreno completado</h2>
     <div id="sharePreview" style="margin:16px auto;max-width:520px;border-radius:6px;padding:26px 12px;min-height:60px;"></div>
-    <div style="display:flex;gap:8px;justify-content:center;">
-      <button id="shareColor_hueso" class="small" onclick="setShareColor('hueso')">Hueso</button>
-      <button id="shareColor_negro" class="small secondary" onclick="setShareColor('negro')">Negro</button>
+    <div style="display:flex;gap:18px;justify-content:center;align-items:center;">
+      <button id="shareColor_hueso" title="Hueso" aria-label="Sticker color hueso" onclick="setShareColor('hueso')" style="width:26px;height:26px;min-width:0;padding:0;border-radius:50%;background:#FAFAF8;border:1px solid var(--border);"></button>
+      <button id="shareColor_negro" title="Negro" aria-label="Sticker color negro" onclick="setShareColor('negro')" style="width:26px;height:26px;min-width:0;padding:0;border-radius:50%;background:#111111;border:1px solid var(--border);"></button>
     </div>
     <div style="display:flex;gap:34px;justify-content:center;align-items:center;margin-top:24px;">
       <button class="icon-btn" title="Compartir" aria-label="Compartir" onclick="compartirSticker()" style="padding:8px;">${ICO.share}</button>
       <button class="icon-btn" title="Copiar" aria-label="Copiar" onclick="copiarSticker(this)" style="padding:8px;">${ICO.copy}</button>
-      <button class="icon-btn" title="Continuar" aria-label="Continuar" onclick="continuarResumen()" style="padding:8px;">${ICO.next}</button>
+      <button class="icon-btn" title="${info.volver === 'progreso' ? 'Cerrar' : 'Continuar'}" aria-label="${info.volver === 'progreso' ? 'Cerrar' : 'Continuar'}" onclick="continuarResumen()" style="padding:8px;">${info.volver === 'progreso' ? ICO.close : ICO.next}</button>
     </div>
     <p class="muted" style="font-size:12px;margin:14px auto 0;max-width:340px;">Compártelo o cópialo y pégalo como sticker sobre tu foto.</p>
   </div>`;
@@ -1954,6 +1955,7 @@ async function guardarProgresoDia(avanzar){
   }
 }
 
+let vRutinaCid = null;
 async function loadRutina(){
   const { data: dias } = await sb.from('rutina_dias').select('*').eq('cliente_id', vCliente.id).order('orden');
   vRutinaDias = dias || [];
@@ -1961,6 +1963,7 @@ async function loadRutina(){
     const { data: ejs } = await sb.from('rutina_ejercicios').select('*, ejercicios(nombre, grupo_muscular)').eq('dia_id', d.id).order('orden');
     d.ejercicios = ejs || [];
   }
+  vRutinaCid = vCliente.id;
 }
 
 function renderRutinaBuilder(){
@@ -3031,6 +3034,7 @@ async function cargarHistorialEntrenos(mas){
   if(!mas || !vHE || vHE.cid !== vCliente.id){
     vHE = { cid: vCliente.id, grupos: {}, next: today, min: null, hayMas: false, open: {} };
     box.innerHTML = loadingHtml();
+    if(vRutinaCid !== vCliente.id || !vRutinaDias.length) await loadRutina();
     const [a, b] = await Promise.all([
       sb.from('registro_entreno').select('fecha').eq('cliente_id', vCliente.id).order('fecha').limit(1),
       sb.from('registro_running').select('fecha').eq('cliente_id', vCliente.id).order('fecha').limit(1)
@@ -3104,14 +3108,11 @@ function renderHistorialEntrenos(){
     const abierto = !!vHE.open[g.key];
     html += `<div class="card" style="padding:0;margin-bottom:10px;">
       <div onclick="toggleHE(${i})" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;">
-        <div><b>${heFecha(g.fecha)}</b><div class="muted" style="font-size:12px;">${escHtml(nombre)}${multi ? ' · Entreno ' + g.sesion : ''}</div></div>
-        <span class="muted" style="font-size:12px;">${g.done ? 'Completado' : 'Sin completar'}</span>
+        <div><b>${escHtml(nombre)}${multi ? ' · Entreno ' + g.sesion : ''}</b><div class="muted" style="font-size:12px;">${heFecha(g.fecha)}${g.done ? '' : ' · sin completar'}</div></div>
+        ${g.done ? `<button class="icon-btn" title="Compartir sticker" aria-label="Compartir sticker" onclick="event.stopPropagation();compartirEntrenoHist(${i})" style="padding:6px;">${ICO.share}</button>` : ''}
       </div>
       <div id="he_${i}" style="display:${abierto ? 'block' : 'none'};padding:0 14px 14px;">${detalle}
-        <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center;">
-          ${g.done ? `<button class="icon-btn" title="Compartir sticker" aria-label="Compartir sticker" onclick="compartirEntrenoHist(${i})" style="padding:6px;">${ICO.share}</button>` : '<span></span>'}
-          <button class="small secondary" onclick="eliminarEntrenoHist(${i})">Eliminar entreno</button>
-        </div>
+        <div style="margin-top:14px;text-align:right;"><button class="small secondary" onclick="eliminarEntrenoHist(${i})">Eliminar entreno</button></div>
       </div></div>`;
   });
   if(vHE.hayMas) html += `<div style="text-align:center;margin-top:6px;"><button class="secondary" onclick="cargarHistorialEntrenos(true)">Ver anteriores</button></div>`;
@@ -3345,6 +3346,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
