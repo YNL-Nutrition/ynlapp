@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="a119cd5f9b">
+<meta name="app-version" content="e4dfae0fe1">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -460,18 +460,84 @@ async function switchEntrenadorTab(tab, userId){
   else { await renderEjerciciosTab(); }
 }
 
+// ---------- Panel del entrenador: a quién mirar hoy ----------
+function sumarDias(f, n){ const d = new Date(f + 'T00:00:00'); d.setDate(d.getDate() + n); return toDateStr(d); }
+function diasDesdeFecha(f){ return Math.round((new Date(todayStr() + 'T00:00:00') - new Date(f + 'T00:00:00')) / 86400000); }
+function relDias(f){
+  const d = diasDesdeFecha(f);
+  return d <= 0 ? 'hoy' : d === 1 ? 'ayer' : `hace ${d} días`;
+}
+
+async function enriquecerAsesorados(clientes){
+  if(!clientes.length) return;
+  const ids = clientes.map(c=>c.id);
+  const today = todayStr();
+  const mon = weekRangeOf(today)[0];
+  const [metas, reg, comp] = await Promise.all([
+    fetchAllPages(()=>sb.from('metas').select('cliente_id,kcal,fecha_desde').in('cliente_id', ids).order('fecha_desde', { ascending:false })),
+    fetchAllPages(()=>sb.from('registro').select('cliente_id,fecha,kcal').in('cliente_id', ids).gte('fecha', mon).lte('fecha', today).order('fecha').order('created_at')),
+    fetchAllPages(()=>sb.from('entrenos_completados').select('cliente_id,fecha').in('cliente_id', ids).gte('fecha', sumarDias(today, -30)).order('fecha'))
+  ]);
+  const meta = {};
+  (metas.data || []).forEach(m=>{ if(!meta[m.cliente_id]) meta[m.cliente_id] = m.kcal; });
+  const kcalDia = {};
+  (reg.data || []).forEach(r=>{ const o = (kcalDia[r.cliente_id] = kcalDia[r.cliente_id] || {}); o[r.fecha] = (o[r.fecha] || 0) + (r.kcal || 0); });
+  const ultEntreno = {}, entrenosSemana = {};
+  (comp.data || []).forEach(r=>{
+    if(!ultEntreno[r.cliente_id] || r.fecha > ultEntreno[r.cliente_id]) ultEntreno[r.cliente_id] = r.fecha;
+    if(r.fecha >= mon) entrenosSemana[r.cliente_id] = (entrenosSemana[r.cliente_id] || 0) + 1;
+  });
+  const transcurridos = histDatesBetween(mon, today).length;
+  // clientes sin registros esta semana: se busca su último registro
+  const sinSemana = clientes.filter(c=>!Object.values(kcalDia[c.id] || {}).some(v=>v > 0));
+  const ultimos = {};
+  await Promise.all(sinSemana.map(async c=>{
+    const r = await sb.from('registro').select('fecha').eq('cliente_id', c.id).order('fecha', { ascending:false }).limit(1);
+    if(r.data && r.data[0]) ultimos[c.id] = r.data[0].fecha;
+  }));
+  const info = {};
+  clientes.forEach(c=>{
+    const dias = Object.keys(kcalDia[c.id] || {}).filter(d=>kcalDia[c.id][d] > 0).sort();
+    const cerrados = dias.filter(d=>d < today);
+    const prom = cerrados.length ? cerrados.reduce((s, d)=>s + kcalDia[c.id][d], 0) / cerrados.length : null;
+    const ultima = dias.length ? dias[dias.length - 1] : (ultimos[c.id] || null);
+    const sinComer = ultima ? diasDesdeFecha(ultima) : 9999;
+    const alerta = !!c.auth_user_id && sinComer >= 3;
+    info[c.id] = { sinComer, alerta };
+    const el = document.getElementById('act_' + c.id);
+    if(!el) return;
+    const pct = (prom != null && meta[c.id]) ? ` (${Math.round(prom / meta[c.id] * 100)}%)` : '';
+    el.innerHTML = `<div${alerta ? ' style="font-weight:600;"' : ''}>Comida: ${ultima ? relDias(ultima) : 'sin registros'}</div>
+      <div class="muted" style="font-size:12px;">Entreno: ${ultEntreno[c.id] ? relDias(ultEntreno[c.id]) : 'ninguno en 30 días'}</div>
+      <div class="muted" style="font-size:12px;">Semana: ${dias.length}/${transcurridos} días · ${prom != null ? Math.round(prom) + ' kcal' + pct : '—'} · ${entrenosSemana[c.id] || 0} ${(entrenosSemana[c.id] || 0) === 1 ? 'entreno' : 'entrenos'}</div>`;
+  });
+  // primero quienes llevan más días sin registrar
+  const tbody = document.querySelector('#entrenadorTabContent tbody');
+  if(tbody){
+    const filas = [...tbody.querySelectorAll('tr[data-cid]')];
+    const orig = new Map(filas.map((tr, i)=>[tr, i]));
+    filas.sort((a, b)=>{
+      const ia = info[a.dataset.cid] || { alerta:false, sinComer:0 }, ib = info[b.dataset.cid] || { alerta:false, sinComer:0 };
+      if(ia.alerta !== ib.alerta) return ia.alerta ? -1 : 1;
+      if(ia.alerta && ib.alerta && ia.sinComer !== ib.sinComer) return ib.sinComer - ia.sinComer;
+      return orig.get(a) - orig.get(b);
+    });
+    filas.forEach(tr=>tbody.appendChild(tr));
+  }
+}
+
 async function renderAsesoradosTab(userId){
   const { data: clientes } = await sb.from('clientes').select('*').eq('entrenador_id', userId).order('nombre');
-  let rows = (clientes||[]).map(c=>`<tr>
-      <td>${c.nombre}<div class="muted show-sm">${c.email||'—'}</div></td><td class="hide-sm">${c.email||'—'}</td><td>${c.objetivo||'—'}</td><td>${c.auth_user_id ? 'Sí' : 'No'}</td>
+  let rows = (clientes||[]).map(c=>`<tr data-cid="${c.id}">
+      <td>${c.nombre}<div class="muted show-sm">${c.email||'—'}</div></td><td class="hide-sm">${c.email||'—'}</td><td class="hide-sm">${c.objetivo||'—'}</td><td id="act_${c.id}" style="min-width:150px;"><span class="muted" style="font-size:12px;">Cargando…</span></td><td>${c.auth_user_id ? 'Sí' : 'No'}</td>
       <td><button class="small secondary" onclick="renderClienteDetail('${c.id}', {isSelf:false, entrenadorUserId:'${userId}'})">Ver</button></td>
     </tr>`).join('');
   document.getElementById('entrenadorTabContent').innerHTML = `
     <div class="two-col">
       <div>
         <h2>Tus asesorados</h2>
-        <div class="scroll"><table><thead><tr><th>Nombre</th><th class="hide-sm">Correo</th><th>Objetivo</th><th>Ya entró</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="5" class="muted">Aún no tienes asesorados.</td></tr>'}</tbody></table></div>
+        <div class="scroll"><table><thead><tr><th>Nombre</th><th class="hide-sm">Correo</th><th class="hide-sm">Objetivo</th><th>Actividad</th><th>Ya entró</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" class="muted">Aún no tienes asesorados.</td></tr>'}</tbody></table></div>
       </div>
       <div>
         <h2>Agregar asesorado</h2>
@@ -484,6 +550,7 @@ async function renderAsesoradosTab(userId){
       </div>
     </div>
   `;
+  enriquecerAsesorados(clientes || []);
 }
 
 async function addCliente(userId){
@@ -1888,6 +1955,8 @@ const ICO = {
   copy: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
   next: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18c1-7 6-11 14-11"/><path d="M14 3l4 4-4 4"/></svg>',
   close: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12"/><path d="M18 6L6 18"/></svg>',
+  prev: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  nextw: '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>',
   check: '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>'
 };
 
@@ -3052,6 +3121,8 @@ async function renderProgresoTab(){
   vExChartCargado = false;
   vHistCargado = false;
   vHE = null;
+  vResumenCargado = false;
+  vRS = null;
 
   const pesoBody = `<div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="progresoPesoChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>`;
   const ejerciciosBody = exList.length ? `
@@ -3073,18 +3144,20 @@ async function renderProgresoTab(){
   `;
 
   document.getElementById('clienteTabContent').innerHTML = wrapAccordionList(
-    accordionSectionHtml('progPeso', 'Peso corporal', pesoBody, false)
+    accordionSectionHtml('progResumen', 'Resumen semanal', '<div id="resumenSemanal"></div>', false)
+    + accordionSectionHtml('progPeso', 'Peso corporal', pesoBody, false)
     + accordionSectionHtml('progEj', 'Ejercicios', ejerciciosBody, false)
     + accordionSectionHtml('progHist', 'Historial', '<div id="historialEntrenos"></div>', false)
     + accordionSectionHtml('progFotos', 'Fotos', fotosBody, false)
   );
 
   // Cargar la gráfica/fotos de cada sección solo la primera vez que se abre
-  ['progPeso','progEj','progHist','progFotos'].forEach(id=>{
+  ['progResumen','progPeso','progEj','progHist','progFotos'].forEach(id=>{
     const header = document.querySelector(`#secBody_${id}`).previousElementSibling;
     header.addEventListener('click', ()=>{
       if(id==='progPeso') ensureProgresoPesoChart();
       if(id==='progEj') ensureProgresoExChartSection();
+      if(id==='progResumen' && !vResumenCargado){ vResumenCargado = true; cargarResumenSemanal(0); }
       if(id==='progHist' && !vHistCargado){ vHistCargado = true; cargarHistorialEntrenos(false); }
       if(id==='progFotos' && !vFotosCargadas){ vFotosCargadas = true; loadFotosProgreso(); }
     });
@@ -3221,6 +3294,91 @@ async function eliminarEntrenoHist(i){
   await sb.from('entrenos_completados').delete().eq('cliente_id', vCliente.id).eq('fecha', g.fecha).eq('dia_id', g.diaId).eq('sesion', g.sesion);
   delete vHE.grupos[g.key];
   renderHistorialEntrenos();
+}
+
+// ---------- Resumen semanal (Progreso) ----------
+let vResumenCargado = false, vRS = null;
+
+async function cargarResumenSemanal(delta){
+  const box = document.getElementById('resumenSemanal'); if(!box) return;
+  const today = todayStr();
+  const semanaActual = weekRangeOf(today)[0];
+  if(!vRS || vRS.cid !== vCliente.id) vRS = { cid: vCliente.id, mon: semanaActual };
+  if(delta){
+    const nm = sumarDias(vRS.mon, 7 * delta);
+    if(nm > semanaActual) return;
+    vRS.mon = nm;
+  }
+  const mon = vRS.mon, sun = sumarDias(mon, 6), prevMon = sumarDias(mon, -7), cid = vCliente.id;
+  box.innerHTML = loadingHtml();
+  let [reg, metasR, pesos, comp, ent, run] = await Promise.all([
+    fetchAllPages(()=>sb.from('registro').select('fecha,kcal,proteina,carbohidratos,grasa').eq('cliente_id', cid).gte('fecha', mon).lte('fecha', sun).order('fecha').order('created_at')),
+    sb.from('metas').select('*').eq('cliente_id', cid).lte('fecha_desde', sun).order('fecha_desde', { ascending:false }).limit(1),
+    sb.from('pesos').select('fecha,peso').eq('cliente_id', cid).gte('fecha', prevMon).lte('fecha', sun),
+    sb.from('entrenos_completados').select('fecha,dia_id,sesion').eq('cliente_id', cid).gte('fecha', mon).lte('fecha', sun),
+    fetchAllPages(()=>sb.from('registro_entreno').select('fecha,dia_id,sesion,peso,reps').eq('cliente_id', cid).gte('fecha', mon).lte('fecha', sun).order('fecha').order('ejercicio_id').order('numero_serie')),
+    sb.from('registro_running').select('fecha,dia_id,sesion,distancia_km').eq('cliente_id', cid).gte('fecha', mon).lte('fecha', sun)
+  ]);
+  let meta = (metasR.data && metasR.data[0]) || null;
+  if(!meta){
+    const m2 = await sb.from('metas').select('*').eq('cliente_id', cid).order('fecha_desde', { ascending:false }).limit(1);
+    meta = (m2.data && m2.data[0]) || null;
+  }
+  if(reg.error || comp.error){ box.innerHTML = `<p class="muted">No se pudo cargar el resumen.</p>`; return; }
+  const dias = histDatesBetween(mon, sun);
+  const cerrados = dias.filter(d=>d < today);                 // solo días terminados
+  const tot = {};
+  (reg.data || []).forEach(r=>{
+    const o = (tot[r.fecha] = tot[r.fecha] || { kcal:0, p:0, c:0, g:0 });
+    o.kcal += r.kcal || 0; o.p += r.proteina || 0; o.c += r.carbohidratos || 0; o.g += r.grasa || 0;
+  });
+  const conReg = cerrados.filter(d=>tot[d] && tot[d].kcal > 0);
+  const prom = (k)=> conReg.length ? conReg.reduce((s, d)=>s + tot[d][k], 0) / conReg.length : null;
+  const nf = new Intl.NumberFormat('es-CO', { maximumFractionDigits: 1 });
+  const fila = (a, b, sub)=>`<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:14px;"><span>${a}</span><span style="text-align:right;">${b}${sub ? `<div class="muted" style="font-size:11px;">${sub}</div>` : ''}</span></div>`;
+  const tit = (t)=>`<div class="muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.03em;margin:16px 0 2px;">${t}</div>`;
+  const macro = (nombre, k, metaVal, u)=>{
+    const v = prom(k);
+    if(v == null) return fila(nombre, '—');
+    const pct = metaVal ? ` · ${Math.round(v / metaVal * 100)}% de la meta` : '';
+    return fila(nombre, `${nf.format(Math.round(v))} ${u}`, metaVal ? `meta ${nf.format(metaVal)} ${u}${pct}` : '');
+  };
+  // peso
+  const avg = (arr)=> arr.length ? arr.reduce((s, x)=>s + x.peso, 0) / arr.length : null;
+  const pSem = avg((pesos.data || []).filter(p=>p.fecha >= mon));
+  const pPrev = avg((pesos.data || []).filter(p=>p.fecha < mon));
+  let pesoFila = fila('Peso promedio', '—');
+  if(pSem != null){
+    const delta = pPrev != null ? pSem - pPrev : null;
+    pesoFila = fila('Peso promedio', `${nf.format(Math.round(pSem * 10) / 10)} kg`, delta != null ? `${delta > 0 ? '+' : ''}${nf.format(Math.round(delta * 10) / 10)} kg vs la semana anterior` : 'sin pesos la semana anterior');
+  }
+  // entrenos completados
+  const done = new Set((comp.data || []).map(r=>`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
+  const gymRows = (ent.data || []).filter(r=>done.has(`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
+  const vol = gymRows.reduce((s, r)=>s + ((r.peso != null && r.reps != null) ? r.peso * r.reps : 0), 0);
+  const runRows = (run.data || []).filter(r=>done.has(`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
+  const km = runRows.reduce((s, r)=>s + (r.distancia_km || 0), 0);
+  const nEntr = done.size;
+  const esActual = mon === semanaActual;
+  box.innerHTML = `<div style="max-width:520px;margin:0 auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <button class="icon-btn" aria-label="Semana anterior" onclick="cargarResumenSemanal(-1)">${ICO.prev}</button>
+      <b>Semana ${shortDate(mon)} – ${shortDate(sun)}</b>
+      <button class="icon-btn" aria-label="Semana siguiente" onclick="cargarResumenSemanal(1)" style="${esActual ? 'opacity:.25;pointer-events:none;' : ''}">${ICO.nextw}</button>
+    </div>
+    ${tit('Alimentación')}
+    ${fila('Días registrados', `${conReg.length} de ${cerrados.length}`, esActual ? 'Cuenta solo los días terminados; hoy se suma mañana.' : '')}
+    ${macro('Calorías', 'kcal', meta ? meta.kcal : null, 'kcal')}
+    ${macro('Proteína', 'p', meta ? meta.proteina : null, 'g')}
+    ${macro('Carbohidratos', 'c', meta ? meta.carbohidratos : null, 'g')}
+    ${macro('Grasa', 'g', meta ? meta.grasa : null, 'g')}
+    ${tit('Peso')}
+    ${pesoFila}
+    ${tit('Entrenamiento')}
+    ${fila('Entrenos completados', String(nEntr))}
+    ${gymRows.length ? fila('Series y volumen', `${gymRows.length} series`, `${new Intl.NumberFormat('es-CO').format(Math.round(vol))} kg de volumen`) : ''}
+    ${runRows.length ? fila('Running', `${nf.format(Math.round(km * 10) / 10)} km`, `${runRows.length} ${runRows.length === 1 ? 'salida' : 'salidas'}`) : ''}
+  </div>`;
 }
 
 function ensureProgresoPesoChart(){
@@ -3418,7 +3576,7 @@ window.onFotoFileSelected=onFotoFileSelected; window.deleteFotoProgreso=deleteFo
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
 window.onFoodChange=onFoodChange; window.onUnitModeChange=onUnitModeChange; window.onDateChange=onDateChange;
 window.addEntry=addEntry; window.deleteEntry=deleteEntry; window.saveDayNote=saveDayNote;
-window.iniciarEntreno=iniciarEntreno; window.toggleHE=toggleHE; window.eliminarEntrenoHist=eliminarEntrenoHist; window.cargarHistorialEntrenos=cargarHistorialEntrenos; window.compartirEntrenoHist=compartirEntrenoHist; window.setShareColor=setShareColor; window.compartirSticker=compartirSticker; window.copiarSticker=copiarSticker; window.continuarResumen=continuarResumen; window.openEditEntry=openEditEntry; window.closeEditEntry=closeEditEntry; window.saveEditEntry=saveEditEntry; window.onEditEntryFoodChange=onEditEntryFoodChange; window.onEditEntryModeChange=onEditEntryModeChange;
+window.cargarResumenSemanal=cargarResumenSemanal; window.iniciarEntreno=iniciarEntreno; window.toggleHE=toggleHE; window.eliminarEntrenoHist=eliminarEntrenoHist; window.cargarHistorialEntrenos=cargarHistorialEntrenos; window.compartirEntrenoHist=compartirEntrenoHist; window.setShareColor=setShareColor; window.compartirSticker=compartirSticker; window.copiarSticker=copiarSticker; window.continuarResumen=continuarResumen; window.openEditEntry=openEditEntry; window.closeEditEntry=closeEditEntry; window.saveEditEntry=saveEditEntry; window.onEditEntryFoodChange=onEditEntryFoodChange; window.onEditEntryModeChange=onEditEntryModeChange;
 window.openPlantillaModal=openPlantillaModal; window.closePlantillaModal=closePlantillaModal; window.savePlantilla=savePlantilla;
 window.addPlantillaRow=addPlantillaRow; window.removePlantillaRow=removePlantillaRow; window.updPlantillaRow=updPlantillaRow;
 window.togglePlantillaChip=togglePlantillaChip; window.aplicarPlantilla=aplicarPlantilla; window.eliminarPlantilla=eliminarPlantilla; window.refreshPlantillasList=refreshPlantillasList;
@@ -3429,6 +3587,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
