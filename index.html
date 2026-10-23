@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="eb937ff7cd">
+<meta name="app-version" content="720f54d8a2">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -1734,7 +1734,7 @@ async function buildMiEntrenoRunHtml(dia, viewDate, isToday){
 }
 
 // ---------- Sticker para compartir el entreno ----------
-let vShareInfo = null, vShareColor = 'hueso', vShareBlob = null, vShareUrl = null, vLogoImg = null, vLogoBox = null;
+let vShareInfo = null, vShareColor = 'hueso', vShareBlob = null, vShareBlobFondo = null, vShareUrl = null, vLogoImg = null, vLogoBox = null;
 
 function fmtDuracion(sec){
   const m = Math.round(sec / 60);
@@ -1777,10 +1777,21 @@ function cargarLogo(){
   });
 }
 
-async function dibujarSticker(info, color){
+function rectRedondo(ctx, x, y, w, hh, r){
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + hh, r);
+  ctx.arcTo(x + w, y + hh, x, y + hh, r);
+  ctx.arcTo(x, y + hh, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// conFondo = false: sticker transparente (para Copiar). conFondo = true: con fondo de color contrario al texto (para Compartir).
+async function dibujarSticker(info, color, conFondo){
   const sc = 2.5;
-  const W = Math.round(1080 * sc), pad = Math.round(30 * sc), logoH = Math.round(88 * sc), fs = Math.round(38 * sc);
-  const H = logoH + 2 * pad;
+  const W = Math.round(1080 * sc), pad = Math.round((conFondo ? 46 : 30) * sc), vp = Math.round((conFondo ? 34 : 30) * sc), logoH = Math.round(88 * sc), fs = Math.round(38 * sc);
+  const H = logoH + 2 * vp;
   const rgb = color === 'negro' ? '#111111' : '#FAFAF8';
   const halo = color === 'negro' ? 'rgba(250,250,248,0.28)' : 'rgba(0,0,0,0.28)';
   const img = await cargarLogo();
@@ -1810,17 +1821,25 @@ async function dibujarSticker(info, color){
   };
   medir();
   while(gap < 22 * sc && fsz > 22 * sc){ fsz -= 2; medir(); }   // si no cabe, el texto se achica
-  ctx.shadowColor = halo; ctx.shadowBlur = Math.round(5 * sc);
-  ctx.drawImage(tmp, pad, pad);
+  if(conFondo){
+    ctx.fillStyle = color === 'negro' ? '#FAFAF8' : '#111111';
+    rectRedondo(ctx, 0, 0, W, H, Math.round(34 * sc));
+    ctx.fill();
+  } else {
+    ctx.shadowColor = halo; ctx.shadowBlur = Math.round(5 * sc);
+  }
+  ctx.drawImage(tmp, pad, vp);
   ctx.fillStyle = rgb;
   let x = pad + lw + gap;
-  textos.forEach((s, i)=>{ ctx.fillText(s, x, pad + logoH / 2); x += anchos[i] + gap; });
+  textos.forEach((s, i)=>{ ctx.fillText(s, x, vp + logoH / 2); x += anchos[i] + gap; });
   return cv;
 }
 
 async function actualizarSticker(){
-  const cv = await dibujarSticker(vShareInfo, vShareColor);
+  const cv = await dibujarSticker(vShareInfo, vShareColor, false);
   vShareBlob = await new Promise(r=>cv.toBlob(r, 'image/png'));
+  const cv2 = await dibujarSticker(vShareInfo, vShareColor, true);
+  vShareBlobFondo = await new Promise(r=>cv2.toBlob(r, 'image/png'));
   if(vShareUrl) URL.revokeObjectURL(vShareUrl);
   vShareUrl = URL.createObjectURL(vShareBlob);
   const box = document.getElementById('sharePreview');
@@ -1858,24 +1877,25 @@ async function showEntrenoResumen(info){
       <button class="icon-btn" title="Copiar" aria-label="Copiar" onclick="copiarSticker(this)" style="padding:8px;">${ICO.copy}</button>
       <button class="icon-btn" title="${info.volver === 'progreso' ? 'Cerrar' : 'Continuar'}" aria-label="${info.volver === 'progreso' ? 'Cerrar' : 'Continuar'}" onclick="continuarResumen()" style="padding:8px;">${info.volver === 'progreso' ? ICO.close : ICO.next}</button>
     </div>
-    <p class="muted" style="font-size:12px;margin:14px auto 0;max-width:340px;">Compártelo o cópialo y pégalo como sticker sobre tu foto.</p>
   </div>`;
   try{ await actualizarSticker(); }
   catch(e){ const b = document.getElementById('sharePreview'); if(b) b.innerHTML = '<span class="muted">No se pudo generar el sticker.</span>'; }
 }
 
 async function compartirSticker(){
-  if(!vShareBlob) return;
-  const file = new File([vShareBlob], 'ynl-entreno.png', { type: 'image/png' });
+  if(!vShareBlobFondo) return;
+  const file = new File([vShareBlobFondo], 'ynl-entreno.png', { type: 'image/png' });
   try{
     if(navigator.canShare && navigator.canShare({ files: [file] })){
       await navigator.share({ files: [file] });
       return;
     }
   }catch(e){ if(e && e.name === 'AbortError') return; }
+  const urlF = URL.createObjectURL(vShareBlobFondo);
   const a = document.createElement('a');
-  a.href = vShareUrl; a.download = 'ynl-entreno.png';
+  a.href = urlF; a.download = 'ynl-entreno.png';
   document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(urlF), 4000);
 }
 
 async function copiarSticker(btn){
@@ -1891,7 +1911,7 @@ async function copiarSticker(btn){
 async function continuarResumen(){
   const volver = vShareInfo && vShareInfo.volver;
   if(vShareUrl){ URL.revokeObjectURL(vShareUrl); vShareUrl = null; }
-  vShareBlob = null;
+  vShareBlob = null; vShareBlobFondo = null;
   if(volver === 'progreso'){
     await renderProgresoTab();
     const cuerpo = document.querySelector('#secBody_progHist');
@@ -3380,6 +3400,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
