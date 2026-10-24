@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="f921f1f139">
+<meta name="app-version" content="27be104de2">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -473,45 +473,32 @@ async function enriquecerAsesorados(clientes){
   const ids = clientes.map(c=>c.id);
   const today = todayStr();
   const mon = weekRangeOf(today)[0];
-  const [metas, reg, comp] = await Promise.all([
-    fetchAllPages(()=>sb.from('metas').select('cliente_id,kcal,fecha_desde').in('cliente_id', ids).order('fecha_desde', { ascending:false })),
-    fetchAllPages(()=>sb.from('registro').select('cliente_id,fecha,kcal').in('cliente_id', ids).gte('fecha', mon).lte('fecha', today).order('fecha').order('created_at')),
-    fetchAllPages(()=>sb.from('entrenos_completados').select('cliente_id,fecha').in('cliente_id', ids).gte('fecha', sumarDias(today, -30)).order('fecha'))
+  const [reg, comp, pesos] = await Promise.all([
+    fetchAllPages(()=>sb.from('registro').select('cliente_id,fecha').in('cliente_id', ids).gte('fecha', mon).lte('fecha', today).order('fecha').order('created_at')),
+    fetchAllPages(()=>sb.from('entrenos_completados').select('cliente_id,fecha').in('cliente_id', ids).gte('fecha', sumarDias(today, -30)).order('fecha')),
+    fetchAllPages(()=>sb.from('pesos').select('cliente_id,fecha').in('cliente_id', ids).gte('fecha', sumarDias(today, -30)).order('fecha'))
   ]);
-  const meta = {};
-  (metas.data || []).forEach(m=>{ if(!meta[m.cliente_id]) meta[m.cliente_id] = m.kcal; });
-  const kcalDia = {};
-  (reg.data || []).forEach(r=>{ const o = (kcalDia[r.cliente_id] = kcalDia[r.cliente_id] || {}); o[r.fecha] = (o[r.fecha] || 0) + (r.kcal || 0); });
-  const ultEntreno = {}, entrenosSemana = {};
-  (comp.data || []).forEach(r=>{
-    if(!ultEntreno[r.cliente_id] || r.fecha > ultEntreno[r.cliente_id]) ultEntreno[r.cliente_id] = r.fecha;
-    if(r.fecha >= mon) entrenosSemana[r.cliente_id] = (entrenosSemana[r.cliente_id] || 0) + 1;
-  });
-  const transcurridos = histDatesBetween(mon, today).length;
-  // clientes sin registros esta semana: se busca su último registro
-  const sinSemana = clientes.filter(c=>!Object.values(kcalDia[c.id] || {}).some(v=>v > 0));
-  const ultimos = {};
-  await Promise.all(sinSemana.map(async c=>{
+  const ultComida = {}, ultEntreno = {}, ultPeso = {};
+  const maxF = (obj, r)=>{ if(!obj[r.cliente_id] || r.fecha > obj[r.cliente_id]) obj[r.cliente_id] = r.fecha; };
+  (reg.data || []).forEach(r=>maxF(ultComida, r));
+  (comp.data || []).forEach(r=>maxF(ultEntreno, r));
+  (pesos.data || []).forEach(r=>maxF(ultPeso, r));
+  // quienes no registraron comida esta semana: se busca su último registro
+  await Promise.all(clientes.filter(c=>!ultComida[c.id]).map(async c=>{
     const r = await sb.from('registro').select('fecha').eq('cliente_id', c.id).order('fecha', { ascending:false }).limit(1);
-    if(r.data && r.data[0]) ultimos[c.id] = r.data[0].fecha;
+    if(r.data && r.data[0]) ultComida[c.id] = r.data[0].fecha;
   }));
   const info = {};
   clientes.forEach(c=>{
-    const dias = Object.keys(kcalDia[c.id] || {}).filter(d=>kcalDia[c.id][d] > 0).sort();
-    const cerrados = dias.filter(d=>d < today);
-    const prom = cerrados.length ? cerrados.reduce((s, d)=>s + kcalDia[c.id][d], 0) / cerrados.length : null;
-    const ultima = dias.length ? dias[dias.length - 1] : (ultimos[c.id] || null);
-    const sinComer = ultima ? diasDesdeFecha(ultima) : 9999;
-    const alerta = !!c.auth_user_id && sinComer >= 3;
-    info[c.id] = { sinComer, alerta };
+    const sinComer = ultComida[c.id] ? diasDesdeFecha(ultComida[c.id]) : 9999;
+    info[c.id] = { sinComer, alerta: !!c.auth_user_id && sinComer >= 3 };
     const el = document.getElementById('act_' + c.id);
     if(!el) return;
-    const pct = (prom != null && meta[c.id]) ? `${Math.round(prom / meta[c.id] * 100)}%` : '';
-    el.innerHTML = `<div class="muted" style="font-size:12px;">Comida: ${ultima ? relDias(ultima) : 'sin registros'}</div>
+    el.innerHTML = `<div class="muted" style="font-size:12px;">Comida: ${ultComida[c.id] ? relDias(ultComida[c.id]) : 'sin registros'}</div>
       <div class="muted" style="font-size:12px;">Entreno: ${ultEntreno[c.id] ? relDias(ultEntreno[c.id]) : 'ninguno en 30 días'}</div>
-      <div class="muted" style="font-size:12px;">Semana: ${dias.length} de ${transcurridos} días con registro · promedio ${prom != null ? Math.round(prom) + ' kcal' + (pct ? ' (' + pct + ' de la meta)' : '') : '—'} · ${entrenosSemana[c.id] || 0} ${(entrenosSemana[c.id] || 0) === 1 ? 'entreno' : 'entrenos'}</div>`;
+      <div class="muted" style="font-size:12px;">Peso: ${ultPeso[c.id] ? relDias(ultPeso[c.id]) : 'ninguno en 30 días'}</div>`;
   });
-  // primero quienes llevan más días sin registrar
+  // primero quienes llevan más días sin registrar comida (sin marca visible)
   const tbody = document.querySelector('#entrenadorTabContent tbody');
   if(tbody){
     const filas = [...tbody.querySelectorAll('tr[data-cid]')];
@@ -3345,7 +3332,7 @@ async function cargarResumenSemanal(delta){
   };
   // peso
   const avg = (arr)=> arr.length ? arr.reduce((s, x)=>s + x.peso, 0) / arr.length : null;
-  const pSem = avg((pesos.data || []).filter(p=>p.fecha >= mon && p.fecha < today));
+  const pSem = avg((pesos.data || []).filter(p=>p.fecha >= mon));
   const pPrev = avg((pesos.data || []).filter(p=>p.fecha < mon));
   let pesoFila = fila('Peso promedio', '—');
   if(pSem != null){
@@ -3353,7 +3340,7 @@ async function cargarResumenSemanal(delta){
     pesoFila = fila('Peso promedio', `${nf.format(Math.round(pSem * 10) / 10)} kg`, delta != null ? `${delta > 0 ? '+' : ''}${nf.format(Math.round(delta * 10) / 10)} kg vs la semana anterior` : 'sin pesos la semana anterior');
   }
   // entrenos completados
-  const done = new Set((comp.data || []).filter(r=>r.fecha < today).map(r=>`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
+  const done = new Set((comp.data || []).map(r=>`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
   const gymRows = (ent.data || []).filter(r=>done.has(`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
   const vol = gymRows.reduce((s, r)=>s + ((r.peso != null && r.reps != null) ? r.peso * r.reps : 0), 0);
   const runRows = (run.data || []).filter(r=>done.has(`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
@@ -3367,7 +3354,7 @@ async function cargarResumenSemanal(delta){
       <button class="icon-btn" aria-label="Semana siguiente" onclick="cargarResumenSemanal(1)" style="${esActual ? 'opacity:.25;pointer-events:none;' : ''}">${ICO.nextw}</button>
     </div>
     ${tit('Alimentación')}
-    ${fila('Días registrados', `${conReg.length} de ${cerrados.length}`, esActual ? 'Cuenta solo los días terminados; hoy se suma mañana.' : '')}
+    ${fila('Días registrados', `${conReg.length} de 7`, esActual ? 'La alimentación cuenta los días terminados; hoy se suma mañana.' : '')}
     ${macro('Calorías', 'kcal', meta ? meta.kcal : null, 'kcal')}
     ${macro('Proteína', 'p', meta ? meta.proteina : null, 'g')}
     ${macro('Carbohidratos', 'c', meta ? meta.carbohidratos : null, 'g')}
