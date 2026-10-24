@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="e4dfae0fe1">
+<meta name="app-version" content="f921f1f139">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -506,10 +506,10 @@ async function enriquecerAsesorados(clientes){
     info[c.id] = { sinComer, alerta };
     const el = document.getElementById('act_' + c.id);
     if(!el) return;
-    const pct = (prom != null && meta[c.id]) ? ` (${Math.round(prom / meta[c.id] * 100)}%)` : '';
-    el.innerHTML = `<div${alerta ? ' style="font-weight:600;"' : ''}>Comida: ${ultima ? relDias(ultima) : 'sin registros'}</div>
+    const pct = (prom != null && meta[c.id]) ? `${Math.round(prom / meta[c.id] * 100)}%` : '';
+    el.innerHTML = `<div class="muted" style="font-size:12px;">Comida: ${ultima ? relDias(ultima) : 'sin registros'}</div>
       <div class="muted" style="font-size:12px;">Entreno: ${ultEntreno[c.id] ? relDias(ultEntreno[c.id]) : 'ninguno en 30 días'}</div>
-      <div class="muted" style="font-size:12px;">Semana: ${dias.length}/${transcurridos} días · ${prom != null ? Math.round(prom) + ' kcal' + pct : '—'} · ${entrenosSemana[c.id] || 0} ${(entrenosSemana[c.id] || 0) === 1 ? 'entreno' : 'entrenos'}</div>`;
+      <div class="muted" style="font-size:12px;">Semana: ${dias.length} de ${transcurridos} días con registro · promedio ${prom != null ? Math.round(prom) + ' kcal' + (pct ? ' (' + pct + ' de la meta)' : '') : '—'} · ${entrenosSemana[c.id] || 0} ${(entrenosSemana[c.id] || 0) === 1 ? 'entreno' : 'entrenos'}</div>`;
   });
   // primero quienes llevan más días sin registrar
   const tbody = document.querySelector('#entrenadorTabContent tbody');
@@ -3303,7 +3303,7 @@ async function cargarResumenSemanal(delta){
   const box = document.getElementById('resumenSemanal'); if(!box) return;
   const today = todayStr();
   const semanaActual = weekRangeOf(today)[0];
-  if(!vRS || vRS.cid !== vCliente.id) vRS = { cid: vCliente.id, mon: semanaActual };
+  if(!vRS || vRS.cid !== vCliente.id) vRS = { cid: vCliente.id, mon: (today === semanaActual) ? sumarDias(semanaActual, -7) : semanaActual };   // el lunes aún no hay días terminados: se abre la semana pasada
   if(delta){
     const nm = sumarDias(vRS.mon, 7 * delta);
     if(nm > semanaActual) return;
@@ -3345,7 +3345,7 @@ async function cargarResumenSemanal(delta){
   };
   // peso
   const avg = (arr)=> arr.length ? arr.reduce((s, x)=>s + x.peso, 0) / arr.length : null;
-  const pSem = avg((pesos.data || []).filter(p=>p.fecha >= mon));
+  const pSem = avg((pesos.data || []).filter(p=>p.fecha >= mon && p.fecha < today));
   const pPrev = avg((pesos.data || []).filter(p=>p.fecha < mon));
   let pesoFila = fila('Peso promedio', '—');
   if(pSem != null){
@@ -3353,7 +3353,7 @@ async function cargarResumenSemanal(delta){
     pesoFila = fila('Peso promedio', `${nf.format(Math.round(pSem * 10) / 10)} kg`, delta != null ? `${delta > 0 ? '+' : ''}${nf.format(Math.round(delta * 10) / 10)} kg vs la semana anterior` : 'sin pesos la semana anterior');
   }
   // entrenos completados
-  const done = new Set((comp.data || []).map(r=>`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
+  const done = new Set((comp.data || []).filter(r=>r.fecha < today).map(r=>`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
   const gymRows = (ent.data || []).filter(r=>done.has(`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
   const vol = gymRows.reduce((s, r)=>s + ((r.peso != null && r.reps != null) ? r.peso * r.reps : 0), 0);
   const runRows = (run.data || []).filter(r=>done.has(`${r.fecha}|${r.dia_id}|${r.sesion || 1}`));
@@ -3376,7 +3376,7 @@ async function cargarResumenSemanal(delta){
     ${pesoFila}
     ${tit('Entrenamiento')}
     ${fila('Entrenos completados', String(nEntr))}
-    ${gymRows.length ? fila('Series y volumen', `${gymRows.length} series`, `${new Intl.NumberFormat('es-CO').format(Math.round(vol))} kg de volumen`) : ''}
+    ${gymRows.length ? fila('Series y volumen', `${gymRows.length} ${gymRows.length === 1 ? 'serie' : 'series'}`, `${new Intl.NumberFormat('es-CO').format(Math.round(vol))} kg de volumen`) : ''}
     ${runRows.length ? fila('Running', `${nf.format(Math.round(km * 10) / 10)} km`, `${runRows.length} ${runRows.length === 1 ? 'salida' : 'salidas'}`) : ''}
   </div>`;
 }
