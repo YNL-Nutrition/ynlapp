@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="27be104de2">
+<meta name="app-version" content="fff046ba73">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -3111,7 +3111,9 @@ async function renderProgresoTab(){
   vResumenCargado = false;
   vRS = null;
 
-  const pesoBody = `<div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="progresoPesoChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>`;
+  const pesoBody = `<div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="progresoPesoChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>
+      <div class="chart-legend" id="pesoLegend" style="min-height:0;margin:6px 0 10px;"></div>
+      <div id="pesoRitmo" style="font-size:13px;text-align:center;line-height:1.6;"></div>`;
   const ejerciciosBody = exList.length ? `
       <select id="progresoExSelect" onchange="renderProgresoExChart(this.value)">
         ${gruposConDatos.map(g=>`<optgroup label="${g}">${exList.filter(e=>e.grupo===g).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('')}</optgroup>`).join('')}
@@ -3501,16 +3503,74 @@ function lineChartOptions(isMobile){
   };
 }
 
+function diasEntre(a, b){ return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000); }
+
+// Tendencia: promedio móvil exponencial que tiene en cuenta los días sin pesaje
+function tendenciaPeso(lista){
+  const ws = [...lista].sort((a, b)=>a.fecha.localeCompare(b.fecha));
+  const out = [];
+  let t = null, prev = null;
+  ws.forEach(w=>{
+    if(t === null) t = w.peso;
+    else {
+      const gap = Math.max(1, diasEntre(prev, w.fecha));
+      t = t + (1 - Math.pow(0.8, gap)) * (w.peso - t);
+    }
+    prev = w.fecha;
+    out.push({ fecha: w.fecha, peso: w.peso, tend: t });
+  });
+  return out;
+}
+
+// Ritmo: pendiente de la línea de tendencia en los últimos 14 días
+function ritmoPeso(serie){
+  if(!serie.length) return null;
+  const ult = serie[serie.length - 1];
+  const pts = serie.filter(p=>p.fecha >= sumarDias(ult.fecha, -14));
+  if(pts.length < 3 || diasEntre(pts[0].fecha, ult.fecha) < 7) return { insuficiente: true, tend: ult.tend };
+  const xs = pts.map(p=>diasEntre(pts[0].fecha, p.fecha)), ys = pts.map(p=>p.tend);
+  const n = pts.length, mx = xs.reduce((a, b)=>a + b, 0) / n, my = ys.reduce((a, b)=>a + b, 0) / n;
+  let num = 0, den = 0;
+  for(let i = 0; i < n; i++){ num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
+  const kgSem = (den ? num / den : 0) * 7;
+  return { kgSem, pct: kgSem / ult.tend * 100, tend: ult.tend };
+}
+
 function renderProgresoPesoChart(){
   const ctx = document.getElementById('progresoPesoChart');
   if(!ctx || typeof Chart==='undefined') return;
-  const weekly = computeWeeklyAverages(vWeights);
   if(progresoPesoChartObj) progresoPesoChartObj.destroy();
-  if(weekly.length===0) return;
+  const ritmoBox = document.getElementById('pesoRitmo');
+  const leg = document.getElementById('pesoLegend');
+  const total = tendenciaPeso(vWeights);
+  if(!total.length){
+    if(ritmoBox) ritmoBox.innerHTML = '<span class="muted">Aún no hay pesajes.</span>';
+    if(leg) leg.innerHTML = '';
+    return;
+  }
+  const ultimo = total[total.length - 1].fecha;
+  const serie = total.filter(p=>p.fecha >= sumarDias(ultimo, -179));   // hasta unos 6 meses
+  const dias = histDatesBetween(serie[0].fecha, ultimo);
+  const porDia = {};
+  serie.forEach(p=>{ porDia[p.fecha] = p; });
   const isMobile = window.matchMedia('(max-width:640px)').matches;
-  fitScrollChart('progresoPesoChart', weekly.length, 56);
-  progresoPesoChartObj = new Chart(ctx, { plugins:[fixedYAxisPlugin], type:'line', data:{ labels:weekly.map(w=>w.label), datasets:[{ label:'Promedio semanal (kg)', data:weekly.map(w=>Math.round(w.avg*10)/10), borderColor:themeInk(), backgroundColor:themeInk(), tension:0.25, pointRadius:3 }]}, options: lineChartOptions(isMobile) });
+  fitScrollChart('progresoPesoChart', dias.length, 16);
+  const opts = lineChartOptions(isMobile);
+  opts.scales.x.ticks = { minRotation: 0, maxRotation: 0, autoSkip: false, callback: (v, i)=> (new Date(dias[i] + 'T00:00:00').getDay() === 1 ? shortDate(dias[i]) : '') };
+  progresoPesoChartObj = new Chart(ctx, { plugins:[fixedYAxisPlugin], type:'line', data:{ labels: dias.map(d=>shortDate(d)), datasets:[
+    { label:'Tendencia', order:0, data: dias.map(d=>porDia[d] ? Math.round(porDia[d].tend * 100) / 100 : null), borderColor:themeInk(), backgroundColor:themeInk(), borderWidth:2, pointRadius:0, pointHoverRadius:3, tension:0, spanGaps:true },
+    { label:'Pesaje', order:1, data: dias.map(d=>porDia[d] ? porDia[d].peso : null), showLine:false, pointRadius:3, backgroundColor:themeMuted(), borderColor:themeMuted() }
+  ]}, options: opts });
   scrollChartToEnd('progresoPesoChart');
+  if(leg) leg.innerHTML = `<span><i style="background:${themeMuted()}"></i>Pesaje</span><span><i style="background:none;border-radius:0;height:0;width:14px;border-top:2px solid ${themeInk()};vertical-align:middle;"></i>Tendencia</span>`;
+  if(ritmoBox){
+    const r = ritmoPeso(total);
+    const nf = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const sg = (v)=>(v > 0 ? '+' : (v < 0 ? '−' : '')) + nf.format(Math.abs(v));
+    ritmoBox.innerHTML = `Tendencia actual: <b>${nf.format(r.tend)} kg</b><br>` + (r.insuficiente
+      ? '<span class="muted">Ritmo: faltan pesajes (mínimo 3 que cubran 7 días o más)</span>'
+      : `Ritmo, últimas 2 semanas: <b>${sg(r.kgSem)} kg/semana (${sg(r.pct)}%)</b>`);
+  }
 }
 
 function renderProgresoExChart(ejercicioId){
