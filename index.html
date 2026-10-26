@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="fff046ba73">
+<meta name="app-version" content="d0b1e00b64">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -1128,6 +1128,7 @@ function renderPerfilTabContent(){
       <div class="field"><label>% de grasa actual</label><input type="number" step="0.1" id="p_grasa_pct" value="${cliente.grasa_corporal ?? ''}"></div>
       <div class="field"><label>Peso inicial (kg)</label><input type="number" step="0.1" id="p_peso_inicial" value="${cliente.peso_inicial ?? ''}" ${(vOpts && vOpts.isSelf) ? 'disabled' : ''}></div>
       <div class="field"><label>% de grasa inicial</label><input type="number" step="0.1" id="p_grasa_pct_inicial" value="${cliente.grasa_corporal_inicial ?? ''}" ${(vOpts && vOpts.isSelf) ? 'disabled' : ''}></div>
+      <div class="field"><label>Inicio del proceso</label><input type="date" id="p_fecha_inicio" value="${cliente.fecha_inicio ?? ''}" ${(vOpts && vOpts.isSelf) ? 'disabled' : ''}></div>
     </div>
     <div class="field" style="margin-top:8px;max-width:300px;"><label>Objetivo actual</label>
       <select id="p_objetivo">
@@ -2386,7 +2387,15 @@ async function saveProfile(){
     peso_inicial: document.getElementById('p_peso_inicial').value || null,
     grasa_corporal_inicial: document.getElementById('p_grasa_pct_inicial').value || null,
   };
-  await sb.from('clientes').update(upd).eq('id', vCliente.id);
+  const fi = document.getElementById('p_fecha_inicio');
+  let res = await sb.from('clientes').update({ ...upd, fecha_inicio: (fi && fi.value) || null }).eq('id', vCliente.id);
+  if(res.error && /fecha_inicio/i.test(res.error.message || '')){
+    res = await sb.from('clientes').update(upd).eq('id', vCliente.id);   // la columna aún no existe: se guarda el resto del perfil
+    if(!res.error && fi && fi.value) alert('El resto del perfil se guardó, pero la fecha de inicio no: falta correr fecha_inicio.sql en Supabase.');
+  } else if(!res.error){
+    upd.fecha_inicio = (fi && fi.value) || null;
+  }
+  if(res.error){ alert('No se pudo guardar el perfil: ' + res.error.message); return; }
   vCliente = Object.assign(vCliente, upd);
 }
 
@@ -3634,6 +3643,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
