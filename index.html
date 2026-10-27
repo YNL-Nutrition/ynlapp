@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="d0b1e00b64">
+<meta name="app-version" content="5f3e07732e">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -1707,6 +1707,7 @@ function playTimbre(){
   if(navigator.vibrate) navigator.vibrate([150,80,150]);
 }
 
+let vSaving = {};
 async function guardarSerie(ej){
   unlockAudio();
   if(!entrenoIniciado()){ alert('Toca Iniciar para empezar el entreno antes de registrar series.'); return; }
@@ -1718,12 +1719,14 @@ async function guardarSerie(ej){
   const s = st.series[idx];
   const today = todayStr();
   const dia = vHoyDia;
-  await sb.from('registro_entreno').delete().eq('cliente_id', vCliente.id).eq('fecha', today).eq('dia_id', dia.id).eq('ejercicio_id', ej).eq('numero_serie', idx+1).eq('sesion', vSesion);
-  if(s.peso !== null || s.reps !== null){
-    const ins = await sb.from('registro_entreno').insert({ cliente_id: vCliente.id, fecha: today, dia_id: dia.id, ejercicio_id: ej, numero_serie: idx+1, peso: s.peso, reps: s.reps, sesion: vSesion });
-    if(ins.error){ alert('No se pudo guardar la serie: ' + ins.error.message); return; }
+  const clave = ej + '|' + idx;
+  if(vSaving[clave]) return;   // evita el doble toque
+  const tieneDatos = (s.peso !== null || s.reps !== null);
+  const peso = s.peso, reps = s.reps;
+  if(tieneDatos){
+    // Primero responde la pantalla: arranca el timer y pasa a la siguiente serie, sin esperar a la red
     s.saved = true;
-    s.savedPeso = s.peso; s.savedReps = s.reps;
+    s.savedPeso = peso; s.savedReps = reps;
     draftClear(ej, idx);
     autoStartRestAfterSerie();
     if(idx + 1 < st.series.length){
@@ -1749,6 +1752,23 @@ async function guardarSerie(ej){
     refreshEjercicioWidget(ej);
   }
   navSaveEj();
+  // Después se guarda en la base de datos
+  vSaving[clave] = true;
+  try{
+    await sb.from('registro_entreno').delete().eq('cliente_id', vCliente.id).eq('fecha', today).eq('dia_id', dia.id).eq('ejercicio_id', ej).eq('numero_serie', idx+1).eq('sesion', vSesion);
+    if(tieneDatos){
+      const ins = await sb.from('registro_entreno').insert({ cliente_id: vCliente.id, fecha: today, dia_id: dia.id, ejercicio_id: ej, numero_serie: idx+1, peso, reps, sesion: vSesion });
+      if(ins.error) throw ins.error;
+    }
+  }catch(e){
+    if(tieneDatos){
+      s.saved = false;
+      if(document.getElementById('teCard_' + ej)) refreshEjercicioWidget(ej);
+      alert(`No se pudo guardar la serie ${idx + 1}: ${(e && e.message) || 'sin conexión'}. Se volverá a intentar al completar el entreno.`);
+    }
+  } finally {
+    delete vSaving[clave];
+  }
 }
 
 function captureSerieInputs(ej){
@@ -1909,8 +1929,8 @@ async function dibujarSticker(info, color, conFondo){
     ctx.fillStyle = color === 'negro' ? '#FAFAF8' : '#111111';
     rectRedondo(ctx, 0, 0, W, H, Math.round(34 * sc));
     ctx.fill();
-  } else {
-    ctx.shadowColor = halo; ctx.shadowBlur = Math.round(5 * sc);
+  } else if(color !== 'negro'){
+    ctx.shadowColor = halo; ctx.shadowBlur = Math.round(5 * sc);   // el sticker negro va sin halo: queda nítido
   }
   ctx.drawImage(tmp, pad, vp);
   ctx.fillStyle = rgb;
