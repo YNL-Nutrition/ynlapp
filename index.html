@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="5f3e07732e">
+<meta name="app-version" content="20a7365dd3">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -1306,7 +1306,10 @@ async function buildMiEntrenoExsHtml(dia, viewDate, isToday){
   const today = viewDate;
   restoreRestState();
   miEntrenoState = {};
+  const vistos = new Set();
   ejs.forEach((re, i)=>{
+    if(vistos.has(re.ejercicio_id)) return;   // el mismo ejercicio repetido en el día solo cuenta una vez
+    vistos.add(re.ejercicio_id);
     const hist = histResults[i].data || [];
     const todayRows = hist.filter(h=>h.fecha===today && h.dia_id===dia.id && (h.sesion || 1) === vSesion);
     const prevRows = hist.filter(h=>h.fecha!==today || (h.dia_id===dia.id && (h.sesion || 1) !== vSesion));
@@ -1347,7 +1350,21 @@ async function buildMiEntrenoExsHtml(dia, viewDate, isToday){
   navSaveEj();
   const header = entrenoTimerHeaderHtml();
   if(!ejs.length) return '<div id="miEntrenoExs">' + header + '<p class="muted">Este día no tiene ejercicios asignados todavía.</p></div>';
-  return '<div id="miEntrenoExs">' + header + ejs.map(re=>renderEjercicioWidgetHtml(re.ejercicio_id)).join('') + '</div>';
+  const pintados = new Set();
+  return '<div id="miEntrenoExs">' + header + ejs.map(re=>{
+    if(pintados.has(re.ejercicio_id)) return renderEjercicioRepetidoHtml(re);
+    pintados.add(re.ejercicio_id);
+    return renderEjercicioWidgetHtml(re.ejercicio_id);
+  }).join('') + '</div>';
+}
+
+function notaCorta(s){ s = String(s).replace(/\s+/g, ' ').trim(); return s.length > 26 ? s.slice(0, 25) + '…' : s; }
+
+function renderEjercicioRepetidoHtml(re){
+  return `<div class="card" style="margin-bottom:10px;padding:14px;">
+    <div style="font-weight:600;">${escHtml(re.ejercicios ? re.ejercicios.nombre : '')}</div>
+    <div class="muted" style="font-size:12px;">${re.notas ? escHtml(notaCorta(re.notas)) + ' · ' : ''}Repetido en este día: no se puede registrar por separado. Avísale a tu entrenador.</div>
+  </div>`;
 }
 
 function renderEjercicioWidgetHtml(ej){
@@ -1359,7 +1376,7 @@ function renderEjercicioWidgetHtml(ej){
   const head = `<div class="acc-head" onclick="toggleEjercicioExpand('${ej}')" style="display:flex;justify-content:space-between;align-items:center;padding:14px;cursor:pointer;">
     <div>
       <div style="font-weight:600;">${re.ejercicios ? re.ejercicios.nombre : '—'}${allSaved ? ' ✓' : ''}${hasPR ? '<span class="pr-badge">PR</span>' : ''}</div>
-      <div class="muted" style="font-size:12px;">${re.ejercicios && re.ejercicios.grupo_muscular ? re.ejercicios.grupo_muscular+' · ' : ''}${st.series.length} serie${st.series.length===1?'':'s'}</div>
+      <div class="muted" style="font-size:12px;">${re.ejercicios && re.ejercicios.grupo_muscular ? re.ejercicios.grupo_muscular+' · ' : ''}${st.series.length} serie${st.series.length===1?'':'s'}${re.notas ? ' · ' + escHtml(notaCorta(re.notas)) : ''}</div>
     </div>
     <span class="muted" style="font-size:12px;">${st.expanded ? '▴' : '▾'}</span>
   </div>`;
@@ -1375,6 +1392,7 @@ function renderEjercicioWidgetHtml(ej){
   return `<div class="card" id="teCard_${ej}" style="margin-bottom:10px;padding:0;">
     ${head}
     <div style="padding:0 14px 14px;border-top:1px solid var(--border);padding-top:14px;">
+      ${re.notas ? `<div class="muted" style="font-size:13px;margin-bottom:12px;">Nota: ${escHtml(re.notas)}</div>` : ''}
       <div class="te-tabs">${tabsHtml}</div>
       <div class="te-row">
         <div class="field"><label>Peso (kg)</label><input type="number" step="0.5" id="tePeso_${ej}" value="${cur.peso ?? ''}"></div>
@@ -1738,7 +1756,7 @@ async function guardarSerie(ej){
       refreshEjercicioWidget(ej);
       const ejs = vHoyDia.ejercicios || [];
       const pos = ejs.findIndex(r=>r.ejercicio_id === ej);
-      const next = ejs[pos + 1];
+      const next = ejs.slice(pos + 1).find(r=>r.ejercicio_id !== ej && miEntrenoState[r.ejercicio_id]);
       if(next && miEntrenoState[next.ejercicio_id]){
         const nst = miEntrenoState[next.ejercicio_id];
         nst.expanded = true; nst.activeIndex = 0;
@@ -2126,6 +2144,14 @@ async function loadRutina(){
   vRutinaCid = vCliente.id;
 }
 
+function avisoRepetidos(d){
+  const cuenta = {};
+  (d.ejercicios || []).forEach(re=>{ cuenta[re.ejercicio_id] = (cuenta[re.ejercicio_id] || 0) + 1; });
+  const nombres = [...new Set((d.ejercicios || []).filter(re=>cuenta[re.ejercicio_id] > 1).map(re=>re.ejercicios ? re.ejercicios.nombre : ''))];
+  if(!nombres.length) return '';
+  return `<p class="muted" style="font-size:12px;margin:10px 0 0;"><b>Ejercicio repetido:</b> ${escHtml(nombres.join(', '))}. No se registra por separado. Crea una variante (por ejemplo «${escHtml(nombres[0])} unilateral») en Base de ejercicios y cámbiala aquí.</p>`;
+}
+
 function renderRutinaBuilder(){
   const header = `<div class="inline" style="margin-bottom:10px;"><h2 style="margin:0;">Rutina de ${escHtml(vCliente.nombre)}</h2><button onclick="openDiaModal()">+ Agregar día</button></div>`;
   let sections = '';
@@ -2148,7 +2174,7 @@ function renderRutinaBuilder(){
         body += `<tr><td>${re.ejercicios ? re.ejercicios.nombre : '—'}</td><td>${re.series ?? '—'}</td><td>${re.reps_objetivo ?? '—'}</td><td>${re.peso_sugerido ?? '—'}</td><td>${re.notas ?? '—'}</td>
           <td style="white-space:nowrap;"><button class="icon-btn" title="Editar" onclick="openRutinaEjercicioModal('${d.id}','${re.id}')">✎</button> <button class="icon-btn" title="Eliminar" onclick="confirmDeleteRutinaEjercicio('${re.id}')">✕</button></td></tr>`;
       });
-      body += `</tbody></table></div>
+      body += `</tbody></table></div>${avisoRepetidos(d)}
       <div style="margin-top:8px;"><button class="small secondary" onclick="openRutinaEjercicioModal('${d.id}')">+ Agregar ejercicio</button></div>`;
     } else {
       body += `<p class="muted" style="margin-top:10px;">Día de running — el cliente registra distancia, tiempo, pace, FC y cadencia directamente.</p>`;
@@ -2249,6 +2275,11 @@ async function saveRutinaEjercicio(){
   const notas = document.getElementById('re_notas').value.trim() || null;
   const err = document.getElementById('reModalErr');
   if(!ejercicio_id){ err.textContent = 'Selecciona un ejercicio.'; return; }
+  const diaAct = vRutinaDias.find(d=>d.id === editingReDiaId);
+  if(diaAct && (diaAct.ejercicios || []).some(x=>x.ejercicio_id === ejercicio_id && x.id !== editingReId)){
+    err.textContent = 'Ese ejercicio ya está en este día. Para registrar una variante por separado (por ejemplo unilateral), crea otro ejercicio en Base de ejercicios, como "Prensa unilateral", y úsalo aquí.';
+    return;
+  }
   const payload = { ejercicio_id, series, reps_objetivo, peso_sugerido, orden, notas };
   const { error } = editingReId
     ? await sb.from('rutina_ejercicios').update(payload).eq('id', editingReId)
@@ -3663,6 +3694,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
