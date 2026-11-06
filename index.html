@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="71807177b7">
+<meta name="app-version" content="0b96bed091">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -3662,10 +3662,17 @@ function renderPesoSemanas(){
       + `<td style="text-align:right;white-space:nowrap;" class="muted">${cambio}</td>`
       + `<td style="text-align:right;white-space:nowrap;" class="muted">${w.count <= PESAJES_POR_SEMANA ? `${w.count} de ${PESAJES_POR_SEMANA}` : w.count}</td></tr>`;
   });
-  box.innerHTML = `<div style="text-align:center;font-weight:600;font-size:13px;">Promedio por semana</div>`
-    + `<div style="border-top:1px solid var(--ink);width:120px;margin:6px auto 8px;"></div>`
-    + `<div class="scroll" style="max-height:260px;"><table><thead><tr><th>Semana</th><th style="text-align:right;">Promedio</th><th style="text-align:right;">Cambio</th><th style="text-align:right;">Pesajes</th></tr></thead><tbody>${filas}</tbody></table></div>`
-    + `<p class="muted" style="font-size:11px;text-align:center;margin-top:6px;">Con menos de 3 pesajes en la semana, el promedio es poco confiable (la semana en curso aún puede completarse).</p>`;
+  box.innerHTML = `<div id="pesoSemHead" onclick="togglePesoSemanas()" style="position:relative;border:1px solid var(--border);border-radius:6px;padding:11px 32px;text-align:center;font-weight:600;font-size:14px;cursor:pointer;">Promedio semanal<span id="pesoSemChev" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:10px;line-height:1;">▾</span></div>`
+    + `<div id="pesoSemBody" style="display:none;margin-top:8px;"><div class="scroll" style="max-height:260px;"><table><thead><tr><th>Semana</th><th style="text-align:right;">Promedio</th><th style="text-align:right;">Cambio</th><th style="text-align:right;">Pesajes</th></tr></thead><tbody>${filas}</tbody></table></div></div>`;
+}
+
+function togglePesoSemanas(){
+  const body = document.getElementById('pesoSemBody'), head = document.getElementById('pesoSemHead'), chev = document.getElementById('pesoSemChev');
+  if(!body) return;
+  const abrir = body.style.display === 'none';
+  body.style.display = abrir ? 'block' : 'none';
+  if(head) head.style.borderColor = abrir ? 'var(--ink)' : 'var(--border)';
+  if(chev) chev.textContent = abrir ? '▴' : '▾';
 }
 
 function renderProgresoPesoChart(){
@@ -3751,6 +3758,7 @@ window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=s
 window.switchClienteTab=switchClienteTab;
 window.renderClienteHome=renderClienteHome; window.renderClienteTabsScreen=renderClienteTabsScreen;
 window.toggleAccordionSection=toggleAccordionSection;
+window.togglePesoSemanas=togglePesoSemanas;
 window.renderProgresoExChart=renderProgresoExChart;
 window.onFotoFileSelected=onFotoFileSelected; window.deleteFotoProgreso=deleteFotoProgreso;
 window.saveProfile=saveProfile; window.saveGoals=saveGoals; window.calcularMacros=calcularMacros;
@@ -3767,6 +3775,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
