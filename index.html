@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="67b977ff55">
+<meta name="app-version" content="71807177b7">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -3212,7 +3212,8 @@ async function renderProgresoTab(){
 
   const pesoBody = `<div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="progresoPesoChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>
       <div class="chart-legend" id="pesoLegend" style="min-height:0;margin:6px 0 10px;"></div>
-      <div id="pesoRitmo" style="font-size:13px;text-align:center;line-height:1.6;"></div>`;
+      <div id="pesoRitmo" style="font-size:13px;text-align:center;line-height:1.6;"></div>
+      <div id="pesoSemanas" style="margin-top:18px;"></div>`;
   const ejerciciosBody = exList.length ? `
       <select id="progresoExSelect" onchange="renderProgresoExChart(this.value)">
         ${gruposConDatos.map(g=>`<optgroup label="${g}">${exList.filter(e=>e.grupo===g).sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('')}</optgroup>`).join('')}
@@ -3635,7 +3636,40 @@ function ritmoPeso(serie){
   return { kgSem, pct: kgSem / ult.tend * 100, tend: ult.tend };
 }
 
+// Lista de promedio por semana (lunes–domingo), de la más reciente a la más antigua
+const PESAJES_POR_SEMANA = 3;   // los asesorados se pesan 3 días por semana
+function renderPesoSemanas(){
+  const box = document.getElementById('pesoSemanas');
+  if(!box) return;
+  const weekly = computeWeeklyAverages((vWeights || []).map(w=>({ fecha: w.fecha, peso: Number(w.peso) })).filter(w=>!isNaN(w.peso)));
+  if(!weekly.length){ box.innerHTML = ''; return; }
+  const nf = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const hoy = todayStr(), lunesHoy = mondayOf(hoy);
+  const porClave = {};
+  weekly.forEach(w=>{ porClave[w.key] = w; });
+  let filas = '';
+  [...weekly].reverse().forEach(w=>{
+    const actual = w.key === lunesHoy;
+    const ant = porClave[sumarDias(w.key, -7)];
+    let cambio = '—';
+    if(ant && w.count >= PESAJES_POR_SEMANA && ant.count >= PESAJES_POR_SEMANA){   // solo entre semanas completas
+      const d = Math.round((w.avg - ant.avg) * 10) / 10;
+      cambio = (d > 0 ? '+' : (d < 0 ? '−' : '')) + nf.format(Math.abs(d)) + ' kg';
+    }
+    const rango = actual ? `${shortDate(w.key)} – hoy` : `${shortDate(w.key)} – ${shortDate(sumarDias(w.key, 6))}`;
+    filas += `<tr><td>${rango}${actual ? ' <span class="muted" style="font-size:11px;white-space:nowrap;">en curso</span>' : ''}</td>`
+      + `<td style="text-align:right;white-space:nowrap;"><b>${nf.format(Math.round(w.avg * 10) / 10)} kg</b></td>`
+      + `<td style="text-align:right;white-space:nowrap;" class="muted">${cambio}</td>`
+      + `<td style="text-align:right;white-space:nowrap;" class="muted">${w.count <= PESAJES_POR_SEMANA ? `${w.count} de ${PESAJES_POR_SEMANA}` : w.count}</td></tr>`;
+  });
+  box.innerHTML = `<div style="text-align:center;font-weight:600;font-size:13px;">Promedio por semana</div>`
+    + `<div style="border-top:1px solid var(--ink);width:120px;margin:6px auto 8px;"></div>`
+    + `<div class="scroll" style="max-height:260px;"><table><thead><tr><th>Semana</th><th style="text-align:right;">Promedio</th><th style="text-align:right;">Cambio</th><th style="text-align:right;">Pesajes</th></tr></thead><tbody>${filas}</tbody></table></div>`
+    + `<p class="muted" style="font-size:11px;text-align:center;margin-top:6px;">Con menos de 3 pesajes en la semana, el promedio es poco confiable (la semana en curso aún puede completarse).</p>`;
+}
+
 function renderProgresoPesoChart(){
+  renderPesoSemanas();
   const ctx = document.getElementById('progresoPesoChart');
   if(!ctx || typeof Chart==='undefined') return;
   if(progresoPesoChartObj) progresoPesoChartObj.destroy();
@@ -3733,6 +3767,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
