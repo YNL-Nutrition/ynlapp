@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="fed9e1e773">
+<meta name="app-version" content="67b977ff55">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -1336,14 +1336,14 @@ async function buildMiEntrenoExsHtml(dia, viewDate, isToday){
         s.reps = isNaN(r) ? null : r;
       }
     });
-    const prevPesos = prevRows.map(h=>h.peso).filter(p=>p!=null);
+    const prevE1rm = prevRows.map(h=>e1rmEpley(h.peso, h.reps)).filter(v=>v!=null);
     const rs = vNavRestore;
     miEntrenoState[re.ejercicio_id] = {
       re, series,
       activeIndex: (rs && rs.act && rs.act[re.ejercicio_id] != null) ? Math.min(rs.act[re.ejercicio_id], series.length - 1) : 0,
       expanded: !!(rs && rs.exp && rs.exp.includes(re.ejercicio_id)),
-      prevBest: prevPesos.length ? Math.max(...prevPesos) : 0,
-      hasPrev: prevPesos.length > 0
+      prevBest: prevE1rm.length ? Math.max(...prevE1rm) : 0,
+      hasPrev: prevE1rm.length > 0
     };
     recomputePRs(miEntrenoState[re.ejercicio_id]);
   });
@@ -1629,14 +1629,20 @@ document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && vRest
 window.addEventListener('pageshow', ()=>{ if(vRestTimerEnd) tickRestTimer(); });
 
 // ---------- PR: se recalcula siempre desde lo guardado ----------
+// 1RM estimado (Epley): peso × (1 + reps/30). Con 1 rep es el mismo peso.
+function e1rmEpley(peso, reps){
+  const w = parseFloat(peso), r = parseInt(reps);
+  if(isNaN(w) || isNaN(r) || w <= 0 || r <= 0) return null;
+  return r === 1 ? w : w * (1 + r / 30);
+}
 function recomputePRs(st){
   let best = st.prevBest || 0;
   st.series.forEach(s=>{
     s.isPR = false;
-    const w = s.saved ? s.savedPeso : null;
-    if(w != null){
-      if(st.hasPrev && w > best) s.isPR = true;
-      if(w > best) best = w;
+    const e = s.saved ? e1rmEpley(s.savedPeso, s.savedReps) : null;
+    if(e != null){
+      if(st.hasPrev && e > best) s.isPR = true;
+      if(e > best) best = e;
     }
   });
 }
@@ -3727,6 +3733,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
