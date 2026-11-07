@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="0b96bed091">
+<meta name="app-version" content="3908ed80e2">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -82,6 +82,8 @@
   .inline{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;}
   input:not([type=checkbox]):not([type=radio]),select,textarea{width:100%;}
   .field{min-width:0;}
+  /* Registro diario en celulares: la Fecha va sola en su fila, para que el input de fecha de iOS no se monte sobre Alimento */
+  @media (max-width:520px){ .inline .field-date{flex:0 0 100%;} }
   .error{color:#B23A3A;font-size:13px;margin:6px 0 0;}
   .msg{color:var(--ink);font-size:13px;margin:6px 0 0;}
   table{width:100%;border-collapse:collapse;}
@@ -2383,7 +2385,7 @@ async function renderNutricionTab(){
   const registroBody = `
       <div id="exportArea">
       <div class="inline" style="margin-bottom:10px;">
-        <div class="field"><label>Fecha</label><input type="date" id="logDate" value="${vDate}" onchange="onDateChange()"></div>
+        <div class="field field-date"><label>Fecha</label><input type="date" id="logDate" value="${vDate}" onchange="onDateChange()"></div>
         <div class="field" style="flex:1;min-width:180px;"><label>Alimento</label><select id="entryFood" onchange="onFoodChange()"></select></div>
         <div class="field"><label id="entryPortionLabel">Porción (g)</label><input type="number" class="portion-input" id="entryPortion" value="100"></div>
         <div class="field" id="entryUnitModeWrap" style="display:none;"><label>Modo</label>
