@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="3908ed80e2">
+<meta name="app-version" content="0ffe00cee9">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -84,6 +84,9 @@
   .field{min-width:0;}
   /* Registro diario en celulares: la Fecha va sola en su fila, para que el input de fecha de iOS no se monte sobre Alimento */
   @media (max-width:520px){ .inline .field-date{flex:0 0 100%;} }
+  .sec-chips{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 2px;}
+  .sec-chip{background:none;color:var(--ink);border:1px solid var(--border);border-radius:4px;padding:5px 10px;font-size:13px;cursor:pointer;}
+  .sec-chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink);}
   .error{color:#B23A3A;font-size:13px;margin:6px 0 0;}
   .msg{color:var(--ink);font-size:13px;margin:6px 0 0;}
   table{width:100%;border-collapse:collapse;}
@@ -208,6 +211,8 @@
     <input type="text" id="ex_video" placeholder="Link de YouTube u otro">
     <label>Notas (opcional)</label>
     <input type="text" id="ex_notas" placeholder="Indicaciones de técnica, etc.">
+    <label>Músculos secundarios (cada serie suma ½)</label>
+    <div class="sec-chips" id="ex_secundarios"></div>
     <div class="modal-actions">
       <button class="secondary" onclick="closeExerciseModal()">Cancelar</button>
       <button id="exModalSaveBtn" onclick="saveExercise()">Guardar</button>
@@ -781,7 +786,7 @@ function renderEjercicioRows(list){
   Object.keys(byGrupo).forEach(g=>{
     html += `<tr><td colspan="3" class="cat-header">${g}</td></tr>`;
     byGrupo[g].forEach(e=>{
-      html += `<tr><td>${e.nombre}</td><td>${e.video_url ? `<a href="${e.video_url}" target="_blank">Ver</a>` : '—'}</td><td style="white-space:nowrap;"><button class="icon-btn" title="Editar" onclick="openEditExercise('${e.id}')">✎</button> <button class="icon-btn" title="Eliminar" onclick="confirmDeleteExercise('${e.id}')">✕</button></td></tr>`;
+      html += `<tr><td>${e.nombre}${(e.grupos_secundarios && e.grupos_secundarios.length) ? `<div class="muted" style="font-size:11px;">+ ${e.grupos_secundarios.join(', ')}</div>` : ''}</td><td>${e.video_url ? `<a href="${e.video_url}" target="_blank">Ver</a>` : '—'}</td><td style="white-space:nowrap;"><button class="icon-btn" title="Editar" onclick="openEditExercise('${e.id}')">✎</button> <button class="icon-btn" title="Eliminar" onclick="confirmDeleteExercise('${e.id}')">✕</button></td></tr>`;
     });
   });
   document.getElementById('exTableBody').innerHTML = html || '<tr><td colspan="3" class="muted">Sin resultados.</td></tr>';
@@ -821,6 +826,22 @@ function fillGrupoSelect(selected){
 function onExGrupoChange(){
   const isNew = document.getElementById('ex_grupo').value === '__nueva__';
   document.getElementById('ex_grupo_nueva').style.display = isNew ? '' : 'none';
+  renderSecChips();
+}
+
+// Músculos secundarios del ejercicio (solo el entrenador los ve y edita)
+let exSecSel = new Set(), exSecLista = [];
+function renderSecChips(){
+  const box = document.getElementById('ex_secundarios'); if(!box) return;
+  const principal = document.getElementById('ex_grupo').value;
+  const usados = (ejerciciosCache || []).map(e=>e.grupo_muscular);
+  exSecLista = [...new Set([...GRUPOS_MUSCULARES, ...usados, ...exSecSel])].filter(g=>g && g !== principal && g !== '__nueva__').sort((a,b)=>a.localeCompare(b));
+  box.innerHTML = exSecLista.map((g,i)=>`<button type="button" class="sec-chip${exSecSel.has(g) ? ' on' : ''}" onclick="toggleSecChip(${i})">${escHtml(g)}</button>`).join('');
+}
+function toggleSecChip(i){
+  const g = exSecLista[i]; if(!g) return;
+  if(exSecSel.has(g)) exSecSel.delete(g); else exSecSel.add(g);
+  renderSecChips();
 }
 
 function openExerciseModal(){
@@ -830,6 +851,8 @@ function openExerciseModal(){
   document.getElementById('exModalErr').textContent = '';
   ['ex_nombre','ex_video','ex_notas'].forEach(id=>document.getElementById(id).value='');
   fillGrupoSelect(GRUPOS_MUSCULARES[0]);
+  exSecSel = new Set();
+  renderSecChips();
   document.getElementById('exModalBg').classList.add('show');
 }
 
@@ -844,6 +867,8 @@ function openEditExercise(id){
   document.getElementById('ex_nombre').value = e.nombre || '';
   document.getElementById('ex_video').value = e.video_url || '';
   document.getElementById('ex_notas').value = e.notas || '';
+  exSecSel = new Set(e.grupos_secundarios || []);
+  renderSecChips();
   document.getElementById('exModalBg').classList.add('show');
 }
 
@@ -858,9 +883,10 @@ async function saveExercise(){
   const err = document.getElementById('exModalErr');
   if(!nombre){ err.textContent = 'Escribe el nombre del ejercicio.'; return; }
   if(!grupo_muscular){ err.textContent = 'Escribe el nombre del nuevo grupo muscular.'; return; }
+  const grupos_secundarios = [...exSecSel].filter(g=>g !== grupo_muscular);
   if(editingExerciseId){
     const { data: upd, error: updErr } = await sb.from('ejercicios').update({
-      grupo_muscular, nombre, video_url: video_url || null, notas: notas || null,
+      grupo_muscular, nombre, video_url: video_url || null, notas: notas || null, grupos_secundarios,
     }).eq('id', editingExerciseId).select();
     if(updErr){ err.textContent = updErr.message; return; }
     if(!upd || upd.length===0){ err.textContent = 'No se pudo actualizar (permisos).'; return; }
@@ -873,7 +899,7 @@ async function saveExercise(){
   const existing = (ejerciciosCache||[]).find(e=>e.id===id);
   if(existing) id = id + '_' + Date.now();
   const { error } = await sb.from('ejercicios').insert({
-    id, grupo_muscular, nombre, video_url: video_url || null, notas: notas || null,
+    id, grupo_muscular, nombre, video_url: video_url || null, notas: notas || null, grupos_secundarios,
   });
   if(error){ err.textContent = error.message; return; }
   closeExerciseModal();
@@ -3211,6 +3237,8 @@ async function renderProgresoTab(){
   vHE = null;
   vResumenCargado = false;
   vRS = null;
+  vSGCargado = false;
+  vSG = null;
 
   const pesoBody = `<div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="progresoPesoChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>
       <div class="chart-legend" id="pesoLegend" style="min-height:0;margin:6px 0 10px;"></div>
@@ -3238,17 +3266,19 @@ async function renderProgresoTab(){
     accordionSectionHtml('progResumen', 'Resumen semanal', '<div id="resumenSemanal"></div>', false)
     + accordionSectionHtml('progPeso', 'Peso corporal', pesoBody, false)
     + accordionSectionHtml('progEj', 'Ejercicios', ejerciciosBody, false)
+    + accordionSectionHtml('progSeries', 'Series por grupo muscular', '<div id="seriesGrupo"></div>', false)
     + accordionSectionHtml('progHist', 'Historial', '<div id="historialEntrenos"></div>', false)
     + accordionSectionHtml('progFotos', 'Fotos', fotosBody, false)
   );
 
   // Cargar la gráfica/fotos de cada sección solo la primera vez que se abre
-  ['progResumen','progPeso','progEj','progHist','progFotos'].forEach(id=>{
+  ['progResumen','progPeso','progEj','progSeries','progHist','progFotos'].forEach(id=>{
     const header = document.querySelector(`#secBody_${id}`).previousElementSibling;
     header.addEventListener('click', ()=>{
       if(id==='progPeso') ensureProgresoPesoChart();
       if(id==='progEj') ensureProgresoExChartSection();
       if(id==='progResumen' && !vResumenCargado){ vResumenCargado = true; cargarResumenSemanal(0); }
+      if(id==='progSeries' && !vSGCargado){ vSGCargado = true; cargarSeriesGrupo(0); }
       if(id==='progHist' && !vHistCargado){ vHistCargado = true; cargarHistorialEntrenos(false); }
       if(id==='progFotos' && !vFotosCargadas){ vFotosCargadas = true; loadFotosProgreso(); }
     });
@@ -3385,6 +3415,121 @@ async function eliminarEntrenoHist(i){
   await sb.from('entrenos_completados').delete().eq('cliente_id', vCliente.id).eq('fecha', g.fecha).eq('dia_id', g.diaId).eq('sesion', g.sesion);
   delete vHE.grupos[g.key];
   renderHistorialEntrenos();
+}
+
+// ---------- Series por grupo muscular (Progreso) ----------
+// Serie directa = 1 para el grupo del ejercicio; cada músculo secundario suma ½.
+let vSGCargado = false, vSG = null;
+
+function sgSumar(out, ej, n){
+  if(!ej || !ej.grupo_muscular || !n) return;
+  (out[ej.grupo_muscular] = out[ej.grupo_muscular] || { dir:0, ind:0 }).dir += n;
+  (ej.grupos_secundarios || []).forEach(g=>{
+    if(!g || g === ej.grupo_muscular) return;
+    (out[g] = out[g] || { dir:0, ind:0 }).ind += n * 0.5;
+  });
+}
+const sgTotal = o => o ? o.dir + o.ind : 0;
+
+async function cargarSeriesGrupo(delta){
+  const box = document.getElementById('seriesGrupo'); if(!box) return;
+  const semanaActual = weekRangeOf(todayStr())[0], cid = vCliente.id;
+  if(!vSG || vSG.cid !== cid) vSG = { cid, mon: semanaActual };
+  if(delta){
+    const nm = sumarDias(vSG.mon, 7 * delta);
+    if(nm > semanaActual) return;
+    vSG.mon = nm;
+  }
+  const mon = vSG.mon, sun = sumarDias(mon, 6), desde = sumarDias(mon, -21);
+  box.innerHTML = loadingHtml();
+  const [reg, dias] = await Promise.all([
+    fetchAllPages(()=>sb.from('registro_entreno').select('fecha, ejercicios(grupo_muscular, grupos_secundarios)').eq('cliente_id', cid).gte('fecha', desde).lte('fecha', sun).order('fecha').order('ejercicio_id').order('numero_serie')),
+    sb.from('rutina_dias').select('id').eq('cliente_id', cid)
+  ]);
+  if(reg.error){ box.innerHTML = `<p class="muted" style="text-align:center;">No se pudo cargar: ${escHtml(reg.error.message)}</p>`; return; }
+  const diaIds = ((dias && dias.data) || []).map(d=>d.id);
+  let progRows = [];
+  if(diaIds.length){
+    const pr = await sb.from('rutina_ejercicios').select('series, ejercicios(grupo_muscular, grupos_secundarios)').in('dia_id', diaIds);
+    progRows = pr.data || [];
+  }
+  if(!document.getElementById('seriesGrupo') || !vSG || vSG.mon !== mon) return;   // el usuario ya cambió de semana o de pantalla
+
+  // Series por semana (4 semanas terminando en la elegida)
+  const semanas = [0,1,2,3].map(k=>{
+    const wmon = sumarDias(mon, -7 * (3 - k)), wsun = sumarDias(wmon, 6), out = {};
+    (reg.data || []).filter(r=>r.fecha >= wmon && r.fecha <= wsun).forEach(r=>sgSumar(out, r.ejercicios, 1));
+    return { mon: wmon, out };
+  });
+  const sel = semanas[3].out;
+  const prog = {};
+  progRows.forEach(r=>sgSumar(prog, r.ejercicios, r.series || 0));
+
+  const nf = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+  const grupos = [...new Set([...Object.keys(sel), ...Object.keys(prog)])]
+    .filter(g=>sgTotal(sel[g]) > 0 || sgTotal(prog[g]) > 0)
+    .sort((a,b)=> sgTotal(sel[b]) - sgTotal(sel[a]) || a.localeCompare(b));
+  const esActual = mon === semanaActual;
+
+  let chart = '';
+  if(!grupos.length){
+    chart = '<p class="muted" style="text-align:center;margin:18px 0;">Aún no hay series registradas esta semana.</p>';
+  } else {
+    const W = Math.max(280, Math.min(520, box.clientWidth || 340)), L = Math.min(100, Math.round(W * 0.27)), R = 26, T = 6, rowH = 30, H = T + grupos.length * rowH + 22;
+    const maxV = Math.max(10, ...grupos.map(g=>Math.max(sgTotal(sel[g]), sgTotal(prog[g]))));
+    const top = Math.ceil((maxV + 2) / 5) * 5;
+    const X = v => L + v * (W - L - R) / top;
+    let svg = '';
+    for(let v = 0; v <= top; v += 5){
+      svg += `<line x1="${X(v)}" x2="${X(v)}" y1="${T}" y2="${T + grupos.length * rowH}" style="stroke:var(--border);stroke-width:1"/>`
+        + `<text x="${X(v)}" y="${H - 6}" text-anchor="middle" style="fill:var(--muted);font-size:11px">${v}</text>`;
+    }
+    grupos.forEach((g, i)=>{
+      const y = T + i * rowH, d = sel[g] || { dir:0, ind:0 }, tot = d.dir + d.ind, pg = sgTotal(prog[g]);
+      svg += `<text x="${L - 10}" y="${y + 19}" text-anchor="end" style="fill:var(--ink);font-size:13px">${escHtml(g)}</text>`;
+      if(d.dir > 0) svg += `<rect x="${X(0)}" y="${y + 5}" width="${X(d.dir) - X(0)}" height="18" rx="2" style="fill:var(--ink)"/>`;
+      if(d.ind > 0) svg += `<rect x="${X(d.dir)}" y="${y + 5}" width="${X(tot) - X(d.dir)}" height="18" rx="2" style="fill:var(--ink);opacity:.35"/>`;
+      if(pg > 0){
+        svg += `<line x1="${X(pg)}" x2="${X(pg)}" y1="${y + 1}" y2="${y + 27}" style="stroke:var(--bg);stroke-width:5"/>`
+          + `<line x1="${X(pg)}" x2="${X(pg)}" y1="${y + 1}" y2="${y + 27}" style="stroke:var(--ink);stroke-width:2"/>`;
+      }
+      svg += `<text x="${X(Math.max(tot, pg)) + 8}" y="${y + 19}" style="fill:var(--muted);font-size:12px;font-weight:600">${nf.format(tot)}</text>`;
+    });
+    chart = `<svg viewBox="0 0 ${W} ${H}" width="${W}" style="display:block;margin:0 auto;max-width:100%;" role="img" aria-label="Series por grupo muscular de la semana">${svg}</svg>`
+      + `<div style="display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:center;font-size:12px;color:var(--muted);margin:6px 0 4px;">`
+      + `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:12px;height:10px;background:var(--ink);border-radius:2px;"></span>Directas (1)</span>`
+      + `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:12px;height:10px;background:var(--ink);opacity:.35;border-radius:2px;"></span>Indirectas (½)</span>`
+      + `<span style="display:inline-flex;align-items:center;gap:5px;"><span style="width:2px;height:12px;background:var(--ink);"></span>Programado en la rutina</span></div>`
+      + `<p class="muted" style="font-size:11px;text-align:center;margin:2px 0 0;">Lo programado suma las series de todos los días de la rutina, cada uno una vez por semana.</p>`;
+  }
+
+  // Tabla de las últimas 4 semanas: solo el entrenador
+  let tabla = '';
+  if(currentRole === 'entrenador'){
+    const gs = [...new Set(semanas.flatMap(w=>Object.keys(w.out)))]
+      .filter(g=>semanas.some(w=>sgTotal(w.out[g]) > 0))
+      .sort((a,b)=> sgTotal(semanas[3].out[b]) - sgTotal(semanas[3].out[a]) || a.localeCompare(b));
+    if(gs.length){
+      const th = semanas.map((w,k)=>`<th style="text-align:right;${k === 3 ? '' : 'font-weight:400;'}">${shortDate(w.mon)}</th>`).join('');
+      const filas = gs.map(g=>`<tr><td>${escHtml(g)}</td>` + semanas.map((w,k)=>{
+        const v = sgTotal(w.out[g]);
+        return `<td style="text-align:right;${k === 3 ? 'font-weight:600;' : ''}" class="${k === 3 ? '' : 'muted'}">${v > 0 ? nf.format(v) : '—'}</td>`;
+      }).join('') + '</tr>').join('');
+      tabla = `<div style="text-align:center;font-weight:600;font-size:13px;margin-top:20px;">Últimas 4 semanas</div>`
+        + `<div style="border-top:1px solid var(--ink);width:120px;margin:6px auto 8px;"></div>`
+        + `<table><thead><tr><th>Grupo</th>${th}</tr></thead><tbody>${filas}</tbody></table>`;
+    }
+  }
+
+  box.innerHTML = `<div style="max-width:520px;margin:0 auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <button class="icon-btn" aria-label="Semana anterior" onclick="cargarSeriesGrupo(-1)">${ICO.prev}</button>
+      <b>Semana ${shortDate(mon)} – ${shortDate(sun)}${esActual ? ' <span class="muted" style="font-size:11px;font-weight:400;white-space:nowrap;">en curso</span>' : ''}</b>
+      <button class="icon-btn" aria-label="Semana siguiente" onclick="cargarSeriesGrupo(1)" style="${esActual ? 'opacity:.25;pointer-events:none;' : ''}">${ICO.nextw}</button>
+    </div>
+    ${chart}
+    ${tabla}
+  </div>`;
 }
 
 // ---------- Resumen semanal (Progreso) ----------
@@ -3760,6 +3905,8 @@ window.renderClienteDetail=renderClienteDetail; window.showEntrenadorDashboard=s
 window.switchClienteTab=switchClienteTab;
 window.renderClienteHome=renderClienteHome; window.renderClienteTabsScreen=renderClienteTabsScreen;
 window.toggleAccordionSection=toggleAccordionSection;
+window.cargarSeriesGrupo=cargarSeriesGrupo;
+window.toggleSecChip=toggleSecChip;
 window.togglePesoSemanas=togglePesoSemanas;
 window.renderProgresoExChart=renderProgresoExChart;
 window.onFotoFileSelected=onFotoFileSelected; window.deleteFotoProgreso=deleteFotoProgreso;
