@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="37baaf0a9f">
+<meta name="app-version" content="eefbd5d0aa">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -147,6 +147,17 @@
   .chart-box h3{font-size:12px;color:var(--muted);margin:0 0 8px;}
   @media (max-width:820px){
     input,select,textarea{font-size:16px;}
+  }
+
+  /* iPhone mini (hasta 380 px): el input de fecha de iOS ignora el ancho y se sale de la fila; se fuerza a la medida de los demás campos */
+  @media (max-width:380px){
+    .field-date input{-webkit-appearance:none;appearance:none;display:block;width:100%;min-width:0;max-width:100%;height:39px;line-height:19px;}
+  }
+  /* Pestañas del entrenador en celulares angostos (hasta 400 px): caben sin ensanchar la página */
+  @media (max-width:400px){
+    .tabs{overflow-x:auto;scrollbar-width:none;}
+    .tabs::-webkit-scrollbar{display:none;}
+    .tab-btn,.card.panel .tab-btn{padding:9px 6px;font-size:13px;flex:0 0 auto;white-space:nowrap;}
   }
 </style>
 </head>
@@ -3945,6 +3956,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
