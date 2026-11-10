@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="YNL">
 <meta name="theme-color" content="#FAFAF8">
-<meta name="app-version" content="2af573178d">
+<meta name="app-version" content="033b6d828a">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
@@ -159,6 +159,17 @@
     .tabs::-webkit-scrollbar{display:none;}
     .tab-btn,.card.panel .tab-btn{padding:9px 6px;font-size:13px;flex:0 0 auto;white-space:nowrap;}
   }
+
+  /* Calendario de fotos (Progreso → Fotos) */
+  .cal-wrap{max-width:560px;margin:0 auto;}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;}
+  .cal-dow{text-align:center;font-size:11px;color:var(--muted);padding-bottom:2px;}
+  .cal-day{height:64px;padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;background:var(--card);border:1px solid var(--border);border-radius:4px;color:var(--ink);font-size:14px;cursor:pointer;}
+  .cal-day:disabled{opacity:.3;cursor:default;}
+  .cal-day.hoy{border-color:var(--ink);}
+  .cal-day.sel{background:var(--ink);color:var(--bg);border-color:var(--ink);}
+  .cal-cam{height:15px;display:flex;align-items:center;}
+  @media (max-width:520px){ .cal-grid{gap:3px;} .cal-day{font-size:13px;height:46px;} .cal-cam,.cal-cam svg{height:13px;} .cal-cam svg{width:13px;} }
 </style>
 </head>
 <body>
@@ -3242,6 +3253,8 @@ async function renderProgresoTab(){
   const gruposConDatos = [...new Set([...GRUPOS_MUSCULARES, ...exList.map(e=>e.grupo)])].sort((a,b)=>a.localeCompare(b)).filter(g=>exList.some(e=>e.grupo===g));
 
   vFotosCargadas = false;
+  vFotoMes = null;
+  vFotoDia = null;
   vPesoChartCargado = false;
   vExChartCargado = false;
   vHistCargado = false;
@@ -3262,16 +3275,11 @@ async function renderProgresoTab(){
       <div class="chart-shell"><div class="chart-scroll"><div class="chart-inner"><canvas id="progresoExChart"></canvas></div></div><canvas class="chart-axis"></canvas></div>
     ` : `<p class="muted">Todavía no hay series registradas en ningún ejercicio.</p>`;
   const fotosBody = `
-      <div class="inline" style="margin-bottom:14px;">
-        <div class="field" style="max-width:150px;"><label>Fecha</label><input type="date" id="fotoFecha" value="" max="${todayStr()}" onchange="renderFotosGrid()"></div>
-        <label class="secondary" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border:1px solid var(--ink);border-radius:4px;cursor:pointer;font-size:14px;">
-          + Subir foto
-          <input type="file" accept="image/*" id="fotoInput" style="display:none;" onchange="onFotoFileSelected(event)">
-        </label>
+      <div class="cal-wrap">
+        <div id="fotosCal"></div>
+        <p class="muted" id="fotoUploadStatus" style="display:none;text-align:center;"></p>
+        <div id="fotosDia" style="margin-top:16px;"></div>
       </div>
-      <p class="muted" id="fotoUploadStatus" style="display:none;"></p>
-      <div id="fotosFechas" class="muted" style="font-size:12px;margin-bottom:10px;"></div>
-      <div id="fotosGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;"><p class="muted">Cargando…</p></div>
   `;
 
   document.getElementById('clienteTabContent').innerHTML = wrapAccordionList(
@@ -3668,38 +3676,70 @@ async function loadFotosProgreso(){
   await renderFotosGrid();
 }
 
+let vFotoMes = null, vFotoDia = null;   // mes que se ve ('AAAA-MM') y día elegido ('AAAA-MM-DD')
+const CAM_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>';
+const MESES_CAL = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+function fotoMes(delta){
+  const [y, m] = (vFotoMes || todayStr().slice(0, 7)).split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  const nuevo = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  if(nuevo > todayStr().slice(0, 7)) return;
+  vFotoMes = nuevo;
+  renderFotosGrid();
+}
+function fotoSelDia(f){
+  vFotoDia = (vFotoDia === f) ? null : f;
+  renderFotosGrid();
+}
+
 async function renderFotosGrid(){
-  const grid = document.getElementById('fotosGrid');
-  if(!grid) return;
-  const fecha = (document.getElementById('fotoFecha') || {}).value || '';
-  // Fechas que tienen fotos (las más recientes primero), para saber qué fecha elegir
-  const fechasBox = document.getElementById('fotosFechas');
-  if(fechasBox){
-    const fechas = [...new Set(vFotosProgreso.map(f=>f.fecha))].slice(0, 8);
-    const anio = todayStr().slice(0, 4);
-    fechasBox.innerHTML = fechas.length ? 'Con fotos: ' + fechas.map(f=>{
-      const txt = shortDate(f) + (f.slice(0, 4) !== anio ? ' ' + f.slice(0, 4) : '');
-      return `<button type="button" onclick="verFotosDe('${f}')" style="background:none;border:none;padding:2px 6px;font-size:12px;color:var(--ink);cursor:pointer;${f === fecha ? 'font-weight:700;' : 'text-decoration:underline;'}">${txt}</button>`;
-    }).join('') : '';
+  const cal = document.getElementById('fotosCal'), dia = document.getElementById('fotosDia');
+  if(!cal || !dia) return;
+  const hoy = todayStr(), mesHoy = hoy.slice(0, 7);
+  if(!vFotoMes) vFotoMes = mesHoy;
+  const [y, m] = vFotoMes.split('-').map(Number);
+  const conFoto = new Set(vFotosProgreso.map(f=>f.fecha));
+  const vacios = (new Date(y, m - 1, 1).getDay() + 6) % 7;      // la semana empieza el lunes
+  const nDias = new Date(y, m, 0).getDate();
+  let celdas = '<span></span>'.repeat(vacios);
+  for(let d = 1; d <= nDias; d++){
+    const f = `${vFotoMes}-${String(d).padStart(2, '0')}`;
+    celdas += `<button type="button" class="cal-day${f === vFotoDia ? ' sel' : ''}${f === hoy ? ' hoy' : ''}"${f > hoy ? ' disabled' : ` onclick="fotoSelDia('${f}')"`} aria-label="${d} de ${MESES_CAL[m - 1].toLowerCase()}${conFoto.has(f) ? ', con fotos' : ''}"><span>${d}</span><span class="cal-cam">${conFoto.has(f) ? CAM_SVG : ''}</span></button>`;
   }
-  if(!vFotosProgreso.length){ grid.innerHTML = '<p class="muted">Todavía no hay fotos.</p>'; return; }
-  if(!fecha){ grid.innerHTML = '<p class="muted">Elige una fecha para ver sus fotos.</p>'; return; }
-  const dia = vFotosProgreso.filter(f=>f.fecha === fecha);
-  if(!dia.length){ grid.innerHTML = '<p class="muted">No hay fotos de esta fecha.</p>'; return; }
-  const urls = await Promise.all(dia.map(f=> sb.storage.from('fotos-progreso').createSignedUrl(f.storage_path, 3600)));
-  if(((document.getElementById('fotoFecha') || {}).value || '') !== fecha) return;   // ya eligió otra fecha
-  grid.innerHTML = dia.map((f,i)=>{
+  cal.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <button class="icon-btn" aria-label="Mes anterior" onclick="fotoMes(-1)">${ICO.prev}</button>
+      <b style="letter-spacing:.04em;">${MESES_CAL[m - 1]} ${y}</b>
+      <button class="icon-btn" aria-label="Mes siguiente" onclick="fotoMes(1)" style="${vFotoMes >= mesHoy ? 'opacity:.25;pointer-events:none;' : ''}">${ICO.nextw}</button>
+    </div>
+    <div class="cal-grid" style="margin-bottom:4px;">${['L','M','M','J','V','S','D'].map(l=>`<div class="cal-dow">${l}</div>`).join('')}</div>
+    <div class="cal-grid">${celdas}</div>`;
+
+  if(!vFotoDia){
+    dia.innerHTML = '<p class="muted" style="text-align:center;">Toca un día para ver sus fotos o subir una.</p>';
+    return;
+  }
+  const dSel = vFotoDia;
+  const delDia = vFotosProgreso.filter(f=>f.fecha === dSel);
+  const titulo = `<div style="text-align:center;font-weight:600;font-size:13px;">${shortDate(dSel)} ${dSel.slice(0, 4)}</div><div style="border-top:1px solid var(--ink);width:120px;margin:6px auto 10px;"></div>`;
+  const subir = `<div style="display:flex;justify-content:center;margin-top:14px;"><label class="secondary" style="display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border:1px solid var(--ink);border-radius:4px;cursor:pointer;font-size:14px;">
+      + Subir foto a este día
+      <input type="file" accept="image/*" id="fotoInput" style="display:none;" onchange="onFotoFileSelected(event)">
+    </label></div>`;
+  if(!delDia.length){
+    dia.innerHTML = titulo + '<p class="muted" style="text-align:center;">No hay fotos este día.</p>' + subir;
+    return;
+  }
+  dia.innerHTML = titulo + '<p class="muted" style="text-align:center;">Cargando…</p>';
+  const urls = await Promise.all(delDia.map(f=> sb.storage.from('fotos-progreso').createSignedUrl(f.storage_path, 3600)));
+  if(vFotoDia !== dSel || !document.getElementById('fotosDia')) return;   // ya cambió de día
+  dia.innerHTML = titulo + `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;">` + delDia.map((f,i)=>{
     const url = urls[i].data ? urls[i].data.signedUrl : '';
     return `<div style="position:relative;">
       <img src="${url}" onclick="window.open('${url}','_blank')" style="width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:4px;border:1px solid var(--border);cursor:pointer;display:block;">
       <button onclick="deleteFotoProgreso('${f.id}','${f.storage_path}')" title="Eliminar" style="position:absolute;top:4px;right:4px;background:rgba(255,255,255,0.92);border:1px solid var(--border);border-radius:50%;width:22px;height:22px;font-size:11px;line-height:1;cursor:pointer;padding:0;">✕</button>
     </div>`;
-  }).join('');
-}
-function verFotosDe(f){
-  const inp = document.getElementById('fotoFecha'); if(!inp) return;
-  inp.value = f;
-  renderFotosGrid();
+  }).join('') + '</div>' + subir;
 }
 
 function resizeImageFile(file, maxDim){
@@ -3732,7 +3772,7 @@ async function onFotoFileSelected(evt){
   statusEl.textContent = 'Subiendo…';
   try{
     const blob = await resizeImageFile(file, 1280);
-    const fecha = document.getElementById('fotoFecha').value || todayStr();
+    const fecha = vFotoDia || todayStr();
     const path = `${vCliente.id}/${Date.now()}.jpg`;
     const { error: upErr } = await sb.storage.from('fotos-progreso').upload(path, blob, { contentType:'image/jpeg' });
     if(upErr){ statusEl.textContent = 'Error al subir: ' + upErr.message; return; }
@@ -3740,7 +3780,7 @@ async function onFotoFileSelected(evt){
     if(insErr){ statusEl.textContent = 'Error al guardar: ' + insErr.message; return; }
     statusEl.style.display = 'none';
     evt.target.value = '';
-    document.getElementById('fotoFecha').value = fecha;
+    vFotoDia = fecha; vFotoMes = fecha.slice(0, 7);
     await loadFotosProgreso();
   }catch(e){
     statusEl.textContent = 'No se pudo procesar la imagen.';
@@ -3956,7 +3996,8 @@ window.switchClienteTab=switchClienteTab;
 window.renderClienteHome=renderClienteHome; window.renderClienteTabsScreen=renderClienteTabsScreen;
 window.toggleAccordionSection=toggleAccordionSection;
 window.cargarSeriesGrupo=cargarSeriesGrupo;
-window.verFotosDe=verFotosDe;
+window.fotoMes=fotoMes;
+window.fotoSelDia=fotoSelDia;
 window.renderFotosGrid=renderFotosGrid;
 window.sgTip=sgTip;
 window.sgTipOff=sgTipOff;
@@ -3978,6 +4019,7 @@ init();
 </script>
 </body>
 </html>
+
 
 
 
